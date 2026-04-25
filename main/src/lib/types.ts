@@ -2,6 +2,7 @@ export type AnswerProvider = "cohere" | "openai";
 export type WorkspaceRole = "owner" | "member";
 export type MessageType = "user" | "command" | "assistant" | "system";
 export type EmbeddingStatus = "pending" | "completed" | "failed";
+export type ToolName = "math.calculate" | "web.fetchPage";
 
 export type Citation = {
   excerpt: string;
@@ -25,6 +26,7 @@ export type ChatMessage = {
 
 export type WorkspaceSummary = {
   answerProvider: AnswerProvider;
+  enabledTools: ToolName[];
   id: string;
   name: string;
   ownerId: string;
@@ -51,10 +53,38 @@ export type WorkspaceDetail = {
   answerProvider: AnswerProvider;
   channelId: string;
   channelName: string;
+  enabledTools: ToolName[];
   id: string;
   members: WorkspaceMember[];
   messages: ChatMessage[];
   name: string;
   role: WorkspaceRole;
   slug: string;
+};
+
+export type ContextRunStatus = "running" | "completed" | "failed";
+
+export type ChatContextRun = {
+  answer: string | null;
+  answerProvider: AnswerProvider;
+  assistantMessageId: string | null;
+  channelId: string;
+  commandMessageId: string | null;
+  createdAt: string;
+  enabledTools: string[];
+  error: string | null;
+  id: string;
+  inputTokens: number | null;
+  model: string | null;
+  modelInput: string | null;
+  outputTokens: number | null;
+  question: string;
+  ragSnippets: unknown[];
+  recentMessages: unknown[];
+  status: ContextRunStatus;
+  systemPrompt: string | null;
+  tokenBreakdown: unknown[];
+  tokenSource: string;
+  toolCalls: unknown[];
+  workspaceId: string;
 };

@@ -24,6 +24,12 @@ export const providerSchema = z.object({
   provider: z.enum(["cohere", "openai"]),
 });
 
+export const toolSettingsSchema = z.object({
+  enabledTools: z
+    .array(z.enum(["math.calculate", "web.fetchPage"]))
+    .default([]),
+});
+
 export const sendMessageSchema = z.object({
   channelId: z.uuid(),
   text: z.string().min(1).max(4000),

@@ -5,12 +5,14 @@ import { serverDebug, serverError } from "@/lib/debug";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   ChatMessage,
+  ChatContextRun,
   Citation,
   PendingInvite,
   WorkspaceDetail,
   WorkspaceMember,
   WorkspaceSummary,
 } from "@/lib/types";
+import { normalizeEnabledTools } from "@/lib/tools";
 
 type RawMessageRow = {
   body: string;
@@ -32,6 +34,10 @@ function asSingle<T>(value: T | T[] | null | undefined) {
   }
 
   return value ?? null;
+}
+
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
 }
 
 export async function getDashboardData() {
@@ -56,7 +62,7 @@ export async function getDashboardData() {
       supabase
         .from("workspace_members")
         .select(
-          "role, workspace:workspaces!inner(id, name, slug, answer_provider, owner_id)",
+          "role, workspace:workspaces!inner(id, name, slug, answer_provider, enabled_tools, owner_id)",
         )
         .eq("user_id", user.id),
       supabase
@@ -115,6 +121,7 @@ export async function getDashboardData() {
     user,
     workspaces: (memberships ?? []).map((membership) => ({
       answerProvider: asSingle(membership.workspace)?.answer_provider ?? "cohere",
+      enabledTools: normalizeEnabledTools(asSingle(membership.workspace)?.enabled_tools),
       id: asSingle(membership.workspace)?.id ?? "",
       name: asSingle(membership.workspace)?.name ?? "Workspace",
       ownerId: asSingle(membership.workspace)?.owner_id ?? "",
@@ -136,7 +143,7 @@ export async function getWorkspaceDetail(workspaceId: string) {
   const { data: membership, error: membershipError } = await supabase
     .from("workspace_members")
     .select(
-      "role, workspace:workspaces!inner(id, name, slug, answer_provider), workspace_id",
+      "role, workspace:workspaces!inner(id, name, slug, answer_provider, enabled_tools), workspace_id",
     )
     .eq("workspace_id", workspaceId)
     .eq("user_id", user.id)
@@ -249,6 +256,7 @@ export async function getWorkspaceDetail(workspaceId: string) {
       answerProvider: asSingle(membership.workspace)?.answer_provider ?? "cohere",
       channelId: channel.id,
       channelName: channel.name,
+      enabledTools: normalizeEnabledTools(asSingle(membership.workspace)?.enabled_tools),
       id: asSingle(membership.workspace)?.id ?? workspaceId,
       members,
       messages,
@@ -316,4 +324,73 @@ function normalizeMessageRow(row: RawMessageRow, memberNameMap: Map<string, stri
       "Org Context",
     workspaceId: row.workspace_id,
   });
+}
+
+export async function getChatContextDebugData(workspaceId: string, runId?: string) {
+  const { supabase, user } = await requireUser();
+
+  const { data: membership } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!membership) {
+    notFound();
+  }
+
+  const { data: runs, error } = await supabase
+    .from("chat_context_runs")
+    .select(
+      "id, workspace_id, channel_id, command_message_id, assistant_message_id, question, answer, answer_provider, model, system_prompt, model_input, rag_snippets, recent_messages, enabled_tools, tool_calls, token_breakdown, input_tokens, output_tokens, token_source, status, error, created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  if (error) {
+    throw new Error(`Could not load context debug data: ${error.message}`);
+  }
+
+  const normalizedRuns = (runs ?? []).map(normalizeContextRun);
+  const selectedRun =
+    normalizedRuns.find((run) => run.id === runId) ?? normalizedRuns[0] ?? null;
+
+  return {
+    runs: normalizedRuns,
+    selectedRun,
+    user,
+  };
+}
+
+function normalizeContextRun(row: Record<string, unknown>) {
+  return {
+    answer: typeof row.answer === "string" ? row.answer : null,
+    answerProvider: row.answer_provider === "openai" ? "openai" : "cohere",
+    assistantMessageId:
+      typeof row.assistant_message_id === "string" ? row.assistant_message_id : null,
+    channelId: String(row.channel_id),
+    commandMessageId:
+      typeof row.command_message_id === "string" ? row.command_message_id : null,
+    createdAt: String(row.created_at),
+    enabledTools: asArray(row.enabled_tools).filter(
+      (tool): tool is string => typeof tool === "string",
+    ),
+    error: typeof row.error === "string" ? row.error : null,
+    id: String(row.id),
+    inputTokens: typeof row.input_tokens === "number" ? row.input_tokens : null,
+    model: typeof row.model === "string" ? row.model : null,
+    modelInput: typeof row.model_input === "string" ? row.model_input : null,
+    outputTokens: typeof row.output_tokens === "number" ? row.output_tokens : null,
+    question: String(row.question ?? ""),
+    ragSnippets: asArray(row.rag_snippets),
+    recentMessages: asArray(row.recent_messages),
+    status: row.status === "failed" || row.status === "running" ? row.status : "completed",
+    systemPrompt: typeof row.system_prompt === "string" ? row.system_prompt : null,
+    tokenBreakdown: asArray(row.token_breakdown),
+    tokenSource: typeof row.token_source === "string" ? row.token_source : "estimated",
+    toolCalls: asArray(row.tool_calls),
+    workspaceId: String(row.workspace_id),
+  } satisfies ChatContextRun;
 }

@@ -10,9 +10,11 @@ export function extractAskQuery(text: string) {
 
 export function buildAnswerInstructions() {
   return [
-    "You answer questions using only the supplied workspace chat context.",
-    "Keep the answer concise, practical, and grounded in the retrieved chat snippets.",
+    "You answer questions using only the supplied workspace chat context and tool results.",
+    "Use recent chat for conversational continuity and retrieved workspace memory for durable facts.",
+    "Keep the answer concise, practical, and grounded in the supplied sources.",
     "If the context is insufficient, say that clearly instead of guessing.",
+    "When tool results are present, incorporate them without exposing internal planning details.",
   ].join(" ");
 }
 

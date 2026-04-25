@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { inviteSchema, providerSchema } from "@/lib/validators";
+import { inviteSchema, providerSchema, toolSettingsSchema } from "@/lib/validators";
 
 async function requireOwner(workspaceId: string, userId: string) {
   const { supabase } = await requireUser();
@@ -138,4 +138,31 @@ export async function updateWorkspaceProviderAction(
   }
 
   revalidatePath(`/workspaces/${workspaceId}`);
+}
+
+export async function updateWorkspaceToolsAction(
+  workspaceId: string,
+  formData: FormData,
+) {
+  const values = toolSettingsSchema.parse({
+    enabledTools: formData.getAll("enabledTools"),
+  });
+
+  const { user } = await requireUser();
+  await requireOwner(workspaceId, user.id);
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("workspaces")
+    .update({
+      enabled_tools: values.enabledTools,
+    })
+    .eq("id", workspaceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
+  revalidatePath(`/workspaces/${workspaceId}/chat`);
 }

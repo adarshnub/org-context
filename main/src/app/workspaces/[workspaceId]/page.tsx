@@ -11,9 +11,11 @@ import Link from "next/link";
 import {
   inviteUserAction,
   updateWorkspaceProviderAction,
+  updateWorkspaceToolsAction,
 } from "@/app/actions/workspace";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { getWorkspaceDetail } from "@/lib/data";
+import { getAllTools } from "@/lib/tools";
 
 export default async function WorkspacePage({
   params,
@@ -29,6 +31,7 @@ export default async function WorkspacePage({
   const inviteMessage =
     typeof query.inviteMessage === "string" ? query.inviteMessage : null;
   const { workspace } = await getWorkspaceDetail(workspaceId);
+  const availableTools = getAllTools();
 
   return (
     <main className="min-h-screen py-6">
@@ -214,6 +217,48 @@ export default async function WorkspacePage({
                     </label>
                     <SubmitButton className="btn-secondary" pendingLabel="Saving...">
                       Save provider
+                    </SubmitButton>
+                  </form>
+                </section>
+
+                <section className="animate-rise stagger-3 surface p-5">
+                  <div className="flex items-center gap-3">
+                    <Settings2 className="text-[var(--teal)]" size={20} />
+                    <div>
+                      <p className="eyebrow">Tools</p>
+                      <h2 className="text-lg font-bold text-[var(--ink)]">
+                        Enabled chat tools
+                      </h2>
+                    </div>
+                  </div>
+                  <form
+                    action={updateWorkspaceToolsAction.bind(null, workspace.id)}
+                    className="mt-5 grid gap-3"
+                  >
+                    {availableTools.map((tool) => (
+                      <label
+                        className="surface-plain flex items-start gap-3 p-3"
+                        key={tool.name}
+                      >
+                        <input
+                          className="mt-1 size-4 accent-[#0f766e]"
+                          defaultChecked={workspace.enabledTools.includes(tool.name)}
+                          name="enabledTools"
+                          type="checkbox"
+                          value={tool.name}
+                        />
+                        <span>
+                          <span className="block text-sm font-bold text-[var(--ink)]">
+                            {tool.name}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">
+                            {tool.description}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                    <SubmitButton className="btn-secondary" pendingLabel="Saving...">
+                      Save tools
                     </SubmitButton>
                   </form>
                 </section>

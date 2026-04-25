@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ChatRoom } from "@/components/chat/chat-room";
 import { getWorkspaceDetail } from "@/lib/data";
+import { isContextDebugPageEnabled } from "@/lib/env";
 
 export default async function WorkspaceChatPage({
   params,
@@ -11,6 +12,7 @@ export default async function WorkspaceChatPage({
 }) {
   const { workspaceId } = await params;
   const { currentUser, workspace } = await getWorkspaceDetail(workspaceId);
+  const debugEnabled = isContextDebugPageEnabled();
 
   return (
     <main className="h-dvh overflow-hidden py-4">
@@ -32,10 +34,21 @@ export default async function WorkspaceChatPage({
               Use `/ask` here to retrieve sourced context from this workspace.
             </p>
           </div>
-          <Link className="btn-secondary" href={`/workspaces/${workspace.id}`}>
-            <Settings2 size={16} />
-            Settings
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {debugEnabled ? (
+              <Link
+                className="btn-secondary"
+                href={`/workspaces/${workspace.id}/chat/debug`}
+              >
+                <Settings2 size={16} />
+                Debug
+              </Link>
+            ) : null}
+            <Link className="btn-secondary" href={`/workspaces/${workspace.id}`}>
+              <Settings2 size={16} />
+              Settings
+            </Link>
+          </div>
         </header>
 
         <section className="animate-rise stagger-1 flex min-h-0 flex-1">
