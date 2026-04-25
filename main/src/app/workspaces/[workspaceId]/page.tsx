@@ -9,7 +9,6 @@ import Link from "next/link";
 
 import {
   inviteUserAction,
-  updateWorkspaceProviderAction,
   updateWorkspaceToolsAction,
 } from "@/app/actions/workspace";
 import { SubmitButton } from "@/components/forms/submit-button";

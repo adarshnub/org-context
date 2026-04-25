@@ -39,7 +39,16 @@ type CohereChatResponse = {
 };
 
 type OpenAIResponsesResponse = {
+  output?: Array<{
+    content?: Array<{
+      refusal?: string;
+      text?: string;
+      type?: string;
+    }>;
+    type?: string;
+  }>;
   output_text?: string;
+  status?: string;
   usage?: unknown;
 };
 
@@ -121,6 +130,39 @@ function extractCohereUsage(payload: CohereChatResponse, fallbackInput: string, 
   }
 
   return estimateUsage(fallbackInput, output);
+}
+
+function extractOpenAIText(payload: OpenAIResponsesResponse) {
+  const directText = payload.output_text?.trim();
+
+  if (directText) {
+    return directText;
+  }
+
+  const text = (payload.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .filter((content) => content.type === "output_text")
+    .map((content) => content.text ?? "")
+    .join("")
+    .trim();
+
+  if (text) {
+    return text;
+  }
+
+  const refusal = (payload.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .find((content) => content.type === "refusal" && content.refusal)?.refusal;
+
+  if (refusal) {
+    throw new Error(`OpenAI refused the request: ${refusal}`);
+  }
+
+  throw new Error(
+    `OpenAI response did not contain text output. Response status: ${
+      payload.status ?? "unknown"
+    }.`,
+  );
 }
 
 function extractJsonObject(text: string) {
@@ -367,12 +409,7 @@ async function generateOpenAIText(systemPrompt: string, input: string) {
   }
 
   const payload = (await response.json()) as OpenAIResponsesResponse;
-
-  if (!payload.output_text) {
-    throw new Error("OpenAI response did not contain output_text.");
-  }
-
-  const text = payload.output_text.trim();
+  const text = extractOpenAIText(payload);
 
   return {
     model: chatModel,

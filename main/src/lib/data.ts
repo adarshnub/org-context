@@ -8,6 +8,7 @@ import type {
   ChatContextRun,
   Citation,
   PendingInvite,
+  TokenUsageData,
   WorkspaceDetail,
   WorkspaceMember,
   WorkspaceSummary,
@@ -38,6 +39,22 @@ function asSingle<T>(value: T | T[] | null | undefined) {
 
 function asArray(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function readNullableNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeStatus(value: unknown) {
+  return value === "failed" || value === "running" ? value : "completed";
+}
+
+function normalizeProvider(value: unknown) {
+  return value === "openai" ? "openai" : "cohere";
 }
 
 export async function getDashboardData() {
@@ -129,6 +146,253 @@ export async function getDashboardData() {
       slug: asSingle(membership.workspace)?.slug ?? "",
     })) satisfies WorkspaceSummary[],
   };
+}
+
+export async function getTokenUsageData() {
+  const { supabase, user } = await requireUser();
+
+  const { data: memberships, error: membershipsError } = await supabase
+    .from("workspace_members")
+    .select("workspace_id, workspace:workspaces!inner(id, name, slug)")
+    .eq("user_id", user.id);
+
+  if (membershipsError) {
+    throw new Error(`Could not load workspace memberships: ${membershipsError.message}`);
+  }
+
+  const workspaceRows = (memberships ?? []).map((membership) => {
+    const workspace = asSingle(membership.workspace);
+
+    return {
+      id: workspace?.id ?? membership.workspace_id,
+      name: workspace?.name ?? "Workspace",
+      slug: workspace?.slug ?? "",
+    };
+  });
+  const workspaceIds = workspaceRows.map((workspace) => workspace.id);
+  const workspaceById = new Map(workspaceRows.map((workspace) => [workspace.id, workspace]));
+
+  if (workspaceIds.length === 0) {
+    return {
+      models: [],
+      recentRuns: [],
+      totals: {
+        estimatedRuns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        providerReportedRuns: 0,
+        runCount: 0,
+        totalTokens: 0,
+      },
+      workspaces: [],
+    } satisfies TokenUsageData;
+  }
+
+  const admin = createAdminClient();
+  const { data: commandRows, error: commandError } = await admin
+    .from("chat_messages")
+    .select("id, workspace_id")
+    .eq("sender_id", user.id)
+    .eq("message_type", "command")
+    .eq("command_name", "ask")
+    .in("workspace_id", workspaceIds);
+
+  if (commandError) {
+    throw new Error(`Could not load user ask commands: ${commandError.message}`);
+  }
+
+  const commandIds = (commandRows ?? []).map((row) => row.id);
+
+  if (commandIds.length === 0) {
+    return {
+      models: [],
+      recentRuns: [],
+      totals: {
+        estimatedRuns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        providerReportedRuns: 0,
+        runCount: 0,
+        totalTokens: 0,
+      },
+      workspaces: workspaceRows.map((workspace) => ({
+        inputTokens: 0,
+        outputTokens: 0,
+        runCount: 0,
+        slug: workspace.slug,
+        totalTokens: 0,
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+      })),
+    } satisfies TokenUsageData;
+  }
+
+  const { data: runRows, error: runsError } = await admin
+    .from("chat_context_runs")
+    .select(
+      "id, workspace_id, question, answer_provider, model, token_breakdown, input_tokens, output_tokens, token_source, status, created_at",
+    )
+    .in("command_message_id", commandIds)
+    .order("created_at", { ascending: false });
+
+  if (runsError) {
+    throw new Error(`Could not load token usage runs: ${runsError.message}`);
+  }
+
+  const totals = {
+    estimatedRuns: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    providerReportedRuns: 0,
+    runCount: 0,
+    totalTokens: 0,
+  };
+  const modelMap = new Map<
+    string,
+    {
+      inputTokens: number;
+      model: string;
+      outputTokens: number;
+      phases: Set<string>;
+      provider: "cohere" | "openai";
+      runIds: Set<string>;
+      source: string;
+      totalTokens: number;
+    }
+  >();
+  const workspaceMap = new Map(
+    workspaceRows.map((workspace) => [
+      workspace.id,
+      {
+        inputTokens: 0,
+        outputTokens: 0,
+        runCount: 0,
+        slug: workspace.slug,
+        totalTokens: 0,
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+      },
+    ]),
+  );
+
+  for (const row of runRows ?? []) {
+    const inputTokens = readNumber(row.input_tokens);
+    const outputTokens = readNumber(row.output_tokens);
+    const totalTokens = inputTokens + outputTokens;
+    const provider = normalizeProvider(row.answer_provider);
+    const tokenSource =
+      typeof row.token_source === "string" ? row.token_source : "estimated";
+
+    totals.inputTokens += inputTokens;
+    totals.outputTokens += outputTokens;
+    totals.totalTokens += totalTokens;
+    totals.runCount += 1;
+
+    if (tokenSource === "provider") {
+      totals.providerReportedRuns += 1;
+    } else {
+      totals.estimatedRuns += 1;
+    }
+
+    const workspaceUsage = workspaceMap.get(String(row.workspace_id));
+
+    if (workspaceUsage) {
+      workspaceUsage.inputTokens += inputTokens;
+      workspaceUsage.outputTokens += outputTokens;
+      workspaceUsage.totalTokens += totalTokens;
+      workspaceUsage.runCount += 1;
+    }
+
+    const breakdown = asArray(row.token_breakdown);
+    const modelItems =
+      breakdown.length > 0
+        ? breakdown
+        : [
+            {
+              inputTokens,
+              model: row.model,
+              outputTokens,
+              phase: "answer",
+              source: tokenSource,
+            },
+          ];
+
+    for (const item of modelItems) {
+      const record = item as Record<string, unknown>;
+      const model =
+        typeof record.model === "string" && record.model.length > 0
+          ? record.model
+          : typeof row.model === "string" && row.model.length > 0
+            ? row.model
+            : provider;
+      const phase = typeof record.phase === "string" ? record.phase : "answer";
+      const itemInput = readNumber(record.inputTokens);
+      const itemOutput = readNumber(record.outputTokens);
+      const key = `${provider}:${model}`;
+      const existing =
+        modelMap.get(key) ??
+        {
+          inputTokens: 0,
+          model,
+          outputTokens: 0,
+          phases: new Set<string>(),
+          provider,
+          runIds: new Set<string>(),
+          source: tokenSource,
+          totalTokens: 0,
+        };
+
+      existing.inputTokens += itemInput;
+      existing.outputTokens += itemOutput;
+      existing.totalTokens += itemInput + itemOutput;
+      existing.phases.add(phase);
+      existing.runIds.add(String(row.id));
+      existing.source =
+        existing.source === "provider" && tokenSource === "provider"
+          ? "provider"
+          : "estimated";
+      modelMap.set(key, existing);
+    }
+  }
+
+  return {
+    models: [...modelMap.values()]
+      .map((model) => ({
+        inputTokens: model.inputTokens,
+        model: model.model,
+        outputTokens: model.outputTokens,
+        phases: [...model.phases],
+        provider: model.provider,
+        runCount: model.runIds.size,
+        source: model.source,
+        totalTokens: model.totalTokens,
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens),
+    recentRuns: (runRows ?? []).slice(0, 20).map((row) => {
+      const inputTokens = readNullableNumber(row.input_tokens);
+      const outputTokens = readNullableNumber(row.output_tokens);
+      const workspace = workspaceById.get(String(row.workspace_id));
+
+      return {
+        answerProvider: normalizeProvider(row.answer_provider),
+        createdAt: String(row.created_at),
+        inputTokens,
+        model: typeof row.model === "string" ? row.model : null,
+        outputTokens,
+        question: String(row.question ?? ""),
+        source: typeof row.token_source === "string" ? row.token_source : "estimated",
+        status: normalizeStatus(row.status),
+        totalTokens:
+          inputTokens === null && outputTokens === null
+            ? null
+            : (inputTokens ?? 0) + (outputTokens ?? 0),
+        workspaceId: String(row.workspace_id),
+        workspaceName: workspace?.name ?? "Workspace",
+      };
+    }),
+    totals,
+    workspaces: [...workspaceMap.values()].sort((a, b) => b.totalTokens - a.totalTokens),
+  } satisfies TokenUsageData;
 }
 
 export async function getWorkspaceDetail(workspaceId: string) {

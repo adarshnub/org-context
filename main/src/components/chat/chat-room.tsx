@@ -90,14 +90,13 @@ export function ChatRoom({
     ? CHAT_COMMANDS.filter((command) => command.name.startsWith(slashToken))
     : [];
   const showCommandSuggestions = matchingCommands.length > 0;
+  const selectedCommandIndex = showCommandSuggestions
+    ? Math.min(activeCommandIndex, matchingCommands.length - 1)
+    : 0;
   const activeCommand =
     slashToken.length > 0
       ? CHAT_COMMANDS.find((command) => command.name === slashToken) ?? null
       : null;
-
-  useEffect(() => {
-    setActiveCommandIndex(0);
-  }, [slashToken]);
 
   const normalizeRealtimeRow = useMemo(() => {
     return (row: Record<string, unknown>): PendingMessage | null => {
@@ -648,7 +647,7 @@ export function ChatRoom({
 
                 if (event.key === "Tab") {
                   event.preventDefault();
-                  const selected = matchingCommands[activeCommandIndex];
+                  const selected = matchingCommands[selectedCommandIndex];
 
                   if (selected) {
                     applyCommand(selected.name);
@@ -660,7 +659,7 @@ export function ChatRoom({
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 if (showCommandSuggestions) {
-                  const selected = matchingCommands[activeCommandIndex];
+                  const selected = matchingCommands[selectedCommandIndex];
 
                   if (selected) {
                     applyCommand(selected.name);
@@ -678,7 +677,7 @@ export function ChatRoom({
         {showCommandSuggestions ? (
           <div className="mt-2 overflow-hidden rounded-lg border border-sky-200 bg-white">
             {matchingCommands.map((command, index) => {
-              const selected = index === activeCommandIndex;
+              const selected = index === selectedCommandIndex;
               return (
                 <button
                   className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${

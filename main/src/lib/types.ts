@@ -88,3 +88,52 @@ export type ChatContextRun = {
   toolCalls: unknown[];
   workspaceId: string;
 };
+
+export type TokenUsageModelSummary = {
+  inputTokens: number;
+  model: string;
+  outputTokens: number;
+  phases: string[];
+  provider: AnswerProvider;
+  runCount: number;
+  source: string;
+  totalTokens: number;
+};
+
+export type TokenUsageWorkspaceSummary = {
+  inputTokens: number;
+  outputTokens: number;
+  runCount: number;
+  slug: string;
+  totalTokens: number;
+  workspaceId: string;
+  workspaceName: string;
+};
+
+export type TokenUsageRecentRun = {
+  answerProvider: AnswerProvider;
+  createdAt: string;
+  inputTokens: number | null;
+  model: string | null;
+  outputTokens: number | null;
+  question: string;
+  source: string;
+  status: ContextRunStatus;
+  totalTokens: number | null;
+  workspaceId: string;
+  workspaceName: string;
+};
+
+export type TokenUsageData = {
+  models: TokenUsageModelSummary[];
+  recentRuns: TokenUsageRecentRun[];
+  totals: {
+    estimatedRuns: number;
+    inputTokens: number;
+    outputTokens: number;
+    providerReportedRuns: number;
+    runCount: number;
+    totalTokens: number;
+  };
+  workspaces: TokenUsageWorkspaceSummary[];
+};

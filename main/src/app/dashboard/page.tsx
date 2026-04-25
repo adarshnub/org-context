@@ -1,4 +1,12 @@
-import { Inbox, LogOut, MessageSquareText, Plus, Settings2, UsersRound } from "lucide-react";
+import {
+  BarChart3,
+  Inbox,
+  LogOut,
+  MessageSquareText,
+  Plus,
+  Settings2,
+  UsersRound,
+} from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -33,12 +41,18 @@ export default async function DashboardPage({
               ready for realtime context retrieval.
             </p>
           </div>
-          <form action={logoutAction}>
-            <SubmitButton className="btn-secondary" pendingLabel="Signing out...">
-              <LogOut size={16} />
-              Sign out
-            </SubmitButton>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <Link className="btn-secondary" href="/dashboard/token-usage">
+              <BarChart3 size={16} />
+              Token usage
+            </Link>
+            <form action={logoutAction}>
+              <SubmitButton className="btn-secondary" pendingLabel="Signing out...">
+                <LogOut size={16} />
+                Sign out
+              </SubmitButton>
+            </form>
+          </div>
         </header>
 
         <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
