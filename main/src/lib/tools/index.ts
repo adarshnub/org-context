@@ -1,12 +1,32 @@
 import { mathTool } from "@/lib/tools/math";
-import type { ToolExecution, ToolRequest } from "@/lib/tools/types";
+import {
+  slackFetchThreadTool,
+  slackGetPermalinkTool,
+  slackListChannelsTool,
+  slackSearchSyncedMessagesTool,
+  slackSendMessageTool,
+} from "@/lib/tools/slack";
+import type { ToolExecution, ToolExecutionContext, ToolRequest } from "@/lib/tools/types";
 import { webFetchTool } from "@/lib/tools/web";
 import type { ToolName } from "@/lib/types";
 
-export const DEFAULT_ENABLED_TOOLS: ToolName[] = ["math.calculate", "web.fetchPage"];
+export const DEFAULT_ENABLED_TOOLS: ToolName[] = [
+  "math.calculate",
+  "web.fetchPage",
+  "slack.listChannels",
+  "slack.searchSyncedMessages",
+  "slack.fetchThread",
+  "slack.getPermalink",
+  "slack.sendMessage",
+];
 
 const registry = {
   "math.calculate": mathTool,
+  "slack.fetchThread": slackFetchThreadTool,
+  "slack.getPermalink": slackGetPermalinkTool,
+  "slack.listChannels": slackListChannelsTool,
+  "slack.searchSyncedMessages": slackSearchSyncedMessagesTool,
+  "slack.sendMessage": slackSendMessageTool,
   "web.fetchPage": webFetchTool,
 } as const;
 
@@ -45,6 +65,7 @@ export function describeTools(toolNames: string[]) {
 export async function executeToolRequests(
   requests: ToolRequest[],
   enabledTools: string[],
+  context: ToolExecutionContext,
 ) {
   const enabled = new Set(enabledTools);
   const executions: ToolExecution[] = [];
@@ -78,7 +99,7 @@ export async function executeToolRequests(
     }
 
     try {
-      const output = await tool.execute(parsed.data as never);
+      const output = await tool.execute(parsed.data as never, context);
 
       executions.push({
         durationMs: Date.now() - startedAt,

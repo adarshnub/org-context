@@ -26,8 +26,22 @@ export const providerSchema = z.object({
 
 export const toolSettingsSchema = z.object({
   enabledTools: z
-    .array(z.enum(["math.calculate", "web.fetchPage"]))
+    .array(
+      z.enum([
+        "math.calculate",
+        "slack.fetchThread",
+        "slack.getPermalink",
+        "slack.listChannels",
+        "slack.searchSyncedMessages",
+        "slack.sendMessage",
+        "web.fetchPage",
+      ]),
+    )
     .default([]),
+});
+
+export const slackChannelSettingsSchema = z.object({
+  selectedChannelIds: z.array(z.string().min(1)).default([]),
 });
 
 export const sendMessageSchema = z.object({

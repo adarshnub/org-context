@@ -2,7 +2,14 @@ export type AnswerProvider = "cohere" | "openai";
 export type WorkspaceRole = "owner" | "member";
 export type MessageType = "user" | "command" | "assistant" | "system";
 export type EmbeddingStatus = "pending" | "completed" | "failed";
-export type ToolName = "math.calculate" | "web.fetchPage";
+export type ToolName =
+  | "math.calculate"
+  | "slack.fetchThread"
+  | "slack.getPermalink"
+  | "slack.listChannels"
+  | "slack.searchSyncedMessages"
+  | "slack.sendMessage"
+  | "web.fetchPage";
 
 export type Citation = {
   excerpt: string;
@@ -22,6 +29,24 @@ export type ChatMessage = {
   senderId: string | null;
   senderName: string;
   workspaceId: string;
+};
+
+export type SlackChannelSummary = {
+  backfillEnabled: boolean;
+  channelId: string | null;
+  id: string;
+  includeInContext: boolean;
+  isPrivate: boolean;
+  isSelected: boolean;
+  slackChannelId: string;
+  slackChannelName: string;
+};
+
+export type SlackInstallationSummary = {
+  connected: boolean;
+  connectedAt: string | null;
+  slackTeamId: string | null;
+  slackTeamName: string | null;
 };
 
 export type WorkspaceSummary = {
@@ -59,6 +84,8 @@ export type WorkspaceDetail = {
   messages: ChatMessage[];
   name: string;
   role: WorkspaceRole;
+  slackChannels: SlackChannelSummary[];
+  slackInstallation: SlackInstallationSummary;
   slug: string;
 };
 

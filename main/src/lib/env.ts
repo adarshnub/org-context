@@ -8,6 +8,11 @@ function requireEnv(name: string) {
   return value;
 }
 
+function optionalEnv(name: string) {
+  const value = process.env[name];
+  return value && value.length > 0 ? value : null;
+}
+
 export function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -73,6 +78,24 @@ export function getOpenAIConfig() {
     apiKey: requireEnv("OPENAI_API_KEY"),
     chatModel: process.env.OPENAI_CHAT_MODEL ?? "gpt-5-mini",
   };
+}
+
+export function getSlackConfig() {
+  return {
+    clientId: requireEnv("SLACK_CLIENT_ID"),
+    clientSecret: requireEnv("SLACK_CLIENT_SECRET"),
+    signingSecret: requireEnv("SLACK_SIGNING_SECRET"),
+    tokenEncryptionKey: requireEnv("SLACK_TOKEN_ENCRYPTION_KEY"),
+  };
+}
+
+export function hasSlackConfig() {
+  return Boolean(
+    optionalEnv("SLACK_CLIENT_ID") &&
+      optionalEnv("SLACK_CLIENT_SECRET") &&
+      optionalEnv("SLACK_SIGNING_SECRET") &&
+      optionalEnv("SLACK_TOKEN_ENCRYPTION_KEY"),
+  );
 }
 
 export function hasOpenAIConfig() {

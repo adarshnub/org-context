@@ -4,10 +4,20 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
+import {
+  ensureSlackChannelMapping,
+  processSlackBackfillJob,
+  refreshSlackChannels,
+} from "@/lib/slack";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { inviteSchema, providerSchema, toolSettingsSchema } from "@/lib/validators";
+import {
+  inviteSchema,
+  providerSchema,
+  slackChannelSettingsSchema,
+  toolSettingsSchema,
+} from "@/lib/validators";
 
-async function requireOwner(workspaceId: string, userId: string) {
+export async function requireOwner(workspaceId: string, userId: string) {
   const { supabase } = await requireUser();
   const { data: membership } = await supabase
     .from("workspace_members")
@@ -237,4 +247,129 @@ export async function updateWorkspaceToolsAction(
 
   revalidatePath(`/workspaces/${workspaceId}`);
   revalidatePath(`/workspaces/${workspaceId}/chat`);
+}
+
+export async function refreshSlackChannelsAction(workspaceId: string) {
+  const { user } = await requireUser();
+  await requireOwner(workspaceId, user.id);
+  await refreshSlackChannels(workspaceId);
+  revalidatePath(`/workspaces/${workspaceId}`);
+}
+
+export async function updateSlackChannelsAction(
+  workspaceId: string,
+  formData: FormData,
+) {
+  const values = slackChannelSettingsSchema.parse({
+    selectedChannelIds: formData.getAll("selectedChannelIds"),
+  });
+  const selected = new Set(values.selectedChannelIds);
+  const { user } = await requireUser();
+  await requireOwner(workspaceId, user.id);
+
+  const admin = createAdminClient();
+  const { data: channels, error: channelsError } = await admin
+    .from("slack_channels")
+    .select(
+      "id, workspace_id, slack_installation_id, channel_id, slack_channel_id, slack_channel_name, is_private, is_selected, include_in_context",
+    )
+    .eq("workspace_id", workspaceId);
+
+  if (channelsError) {
+    throw new Error(channelsError.message);
+  }
+
+  for (const channel of channels ?? []) {
+    const isSelected = selected.has(channel.id);
+
+    if (isSelected) {
+      await ensureSlackChannelMapping({
+        channel_id: channel.channel_id,
+        id: channel.id,
+        include_in_context: channel.include_in_context,
+        is_private: channel.is_private,
+        is_selected: channel.is_selected,
+        slack_channel_id: channel.slack_channel_id,
+        slack_channel_name: channel.slack_channel_name,
+        slack_installation_id: channel.slack_installation_id,
+        workspace_id: channel.workspace_id,
+      });
+    }
+
+    const { error } = await admin
+      .from("slack_channels")
+      .update({
+        is_selected: isSelected,
+      })
+      .eq("id", channel.id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
+  revalidatePath(`/workspaces/${workspaceId}/chat`);
+}
+
+export async function startSlackBackfillAction(workspaceId: string) {
+  const { user } = await requireUser();
+  await requireOwner(workspaceId, user.id);
+
+  const admin = createAdminClient();
+  const { data: channels, error: channelsError } = await admin
+    .from("slack_channels")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("is_selected", true)
+    .eq("backfill_enabled", true);
+
+  if (channelsError) {
+    throw new Error(channelsError.message);
+  }
+
+  const rows = (channels ?? []).map((channel) => ({
+    error: null,
+    next_cursor: null,
+    slack_channel_id: channel.id,
+    status: "pending",
+    workspace_id: workspaceId,
+  }));
+
+  if (rows.length > 0) {
+    const { error } = await admin
+      .from("slack_backfill_jobs")
+      .upsert(rows, { onConflict: "workspace_id,slack_channel_id" });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
+}
+
+export async function processSlackBackfillBatchAction(workspaceId: string) {
+  const { user } = await requireUser();
+  await requireOwner(workspaceId, user.id);
+
+  const admin = createAdminClient();
+  const { data: job, error } = await admin
+    .from("slack_backfill_jobs")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .in("status", ["pending", "running"])
+    .order("updated_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (job) {
+    await processSlackBackfillJob(job.id);
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
 }

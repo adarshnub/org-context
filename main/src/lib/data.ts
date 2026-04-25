@@ -8,6 +8,8 @@ import type {
   ChatContextRun,
   Citation,
   PendingInvite,
+  SlackChannelSummary,
+  SlackInstallationSummary,
   TokenUsageData,
   WorkspaceDetail,
   WorkspaceMember,
@@ -22,6 +24,7 @@ type RawMessageRow = {
   command_name: string | null;
   created_at: string;
   embedding_status: ChatMessage["embeddingStatus"];
+  external_author_name?: string | null;
   id: string;
   message_type: ChatMessage["messageType"];
   sender_id: string | null;
@@ -440,6 +443,8 @@ export async function getWorkspaceDetail(workspaceId: string) {
     { data: memberRows, error: membersError },
     { data: messageRows, error: messagesError },
     { data: profile, error: profileError },
+    { data: slackInstallation, error: slackInstallationError },
+    { data: slackChannelRows, error: slackChannelsError },
   ] = await Promise.all([
     supabase
       .from("channels")
@@ -456,7 +461,7 @@ export async function getWorkspaceDetail(workspaceId: string) {
     supabase
       .from("chat_messages")
       .select(
-        "id, workspace_id, channel_id, sender_id, body, message_type, command_name, embedding_status, created_at, citations, sender:profiles!chat_messages_sender_id_fkey(full_name)",
+        "id, workspace_id, channel_id, sender_id, body, message_type, command_name, embedding_status, created_at, citations, external_author_name, sender:profiles!chat_messages_sender_id_fkey(full_name)",
       )
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true }),
@@ -465,10 +470,28 @@ export async function getWorkspaceDetail(workspaceId: string) {
       .select("full_name, email")
       .eq("id", user.id)
       .single(),
+    supabase
+      .from("slack_installations")
+      .select("id, slack_team_id, slack_team_name, created_at")
+      .eq("workspace_id", workspaceId)
+      .maybeSingle(),
+    supabase
+      .from("slack_channels")
+      .select(
+        "id, channel_id, slack_channel_id, slack_channel_name, is_private, is_selected, include_in_context, backfill_enabled",
+      )
+      .eq("workspace_id", workspaceId)
+      .order("slack_channel_name", { ascending: true }),
   ]);
 
   const loadError =
-    channelError ?? membersError ?? messagesError ?? profileError ?? null;
+    channelError ??
+    membersError ??
+    messagesError ??
+    profileError ??
+    slackInstallationError ??
+    slackChannelsError ??
+    null;
 
   if (loadError) {
     serverError("workspace.load.data", loadError, {
@@ -476,6 +499,8 @@ export async function getWorkspaceDetail(workspaceId: string) {
       membersError,
       messagesError,
       profileError,
+      slackChannelsError,
+      slackInstallationError,
       userId: user.id,
       workspaceId,
     });
@@ -501,6 +526,22 @@ export async function getWorkspaceDetail(workspaceId: string) {
   const memberNameMap = new Map(members.map((member) => [member.userId, member.fullName]));
   const messages =
     (messageRows ?? []).map((row) => normalizeMessageRow(row as RawMessageRow, memberNameMap)) satisfies ChatMessage[];
+  const slackInstallationSummary = {
+    connected: Boolean(slackInstallation),
+    connectedAt: slackInstallation?.created_at ?? null,
+    slackTeamId: slackInstallation?.slack_team_id ?? null,
+    slackTeamName: slackInstallation?.slack_team_name ?? null,
+  } satisfies SlackInstallationSummary;
+  const slackChannels = (slackChannelRows ?? []).map((row) => ({
+    backfillEnabled: row.backfill_enabled,
+    channelId: row.channel_id,
+    id: row.id,
+    includeInContext: row.include_in_context,
+    isPrivate: row.is_private,
+    isSelected: row.is_selected,
+    slackChannelId: row.slack_channel_id,
+    slackChannelName: row.slack_channel_name,
+  })) satisfies SlackChannelSummary[];
 
   serverDebug("workspace.load.success", {
     channelId: channel.id,
@@ -526,6 +567,8 @@ export async function getWorkspaceDetail(workspaceId: string) {
       messages,
       name: asSingle(membership.workspace)?.name ?? "Workspace",
       role: membership.role,
+      slackChannels,
+      slackInstallation: slackInstallationSummary,
       slug: asSingle(membership.workspace)?.slug ?? "",
     } satisfies WorkspaceDetail,
   };
@@ -584,6 +627,7 @@ function normalizeMessageRow(row: RawMessageRow, memberNameMap: Map<string, stri
     senderId: row.sender_id,
     senderName:
       row.sender?.full_name ??
+      row.external_author_name ??
       (row.sender_id ? memberNameMap.get(row.sender_id) : null) ??
       "Org Context",
     workspaceId: row.workspace_id,

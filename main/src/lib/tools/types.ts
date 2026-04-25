@@ -9,9 +9,16 @@ export type ToolExecution = {
   status: "completed" | "failed";
 };
 
+export type ToolExecutionContext = {
+  workspaceId: string;
+};
+
 export type ToolDefinition<TSchema extends z.ZodType> = {
   description: string;
-  execute: (input: z.infer<TSchema>) => Promise<unknown> | unknown;
+  execute: (
+    input: z.infer<TSchema>,
+    context: ToolExecutionContext,
+  ) => Promise<unknown> | unknown;
   inputSchema: TSchema;
   name: string;
 };

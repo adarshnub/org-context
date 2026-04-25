@@ -9,6 +9,10 @@ import Link from "next/link";
 
 import {
   inviteUserAction,
+  processSlackBackfillBatchAction,
+  refreshSlackChannelsAction,
+  startSlackBackfillAction,
+  updateSlackChannelsAction,
   updateWorkspaceToolsAction,
 } from "@/app/actions/workspace";
 import { SubmitButton } from "@/components/forms/submit-button";
@@ -29,6 +33,10 @@ export default async function WorkspacePage({
     typeof query.inviteError === "string" ? query.inviteError : null;
   const inviteMessage =
     typeof query.inviteMessage === "string" ? query.inviteMessage : null;
+  const slackError =
+    typeof query.slackError === "string" ? query.slackError : null;
+  const slackMessage =
+    typeof query.slackMessage === "string" ? query.slackMessage : null;
   const { workspace } = await getWorkspaceDetail(workspaceId);
   const availableTools = getAllTools();
 
@@ -253,6 +261,116 @@ export default async function WorkspacePage({
                       Save tools
                     </SubmitButton>
                   </form>
+                </section>
+
+                <section className="animate-rise stagger-3 surface p-5">
+                  <div className="flex items-center gap-3">
+                    <MessageSquareText className="text-[var(--teal)]" size={20} />
+                    <div>
+                      <p className="eyebrow">Slack</p>
+                      <h2 className="text-lg font-bold text-[var(--ink)]">
+                        Workspace connection
+                      </h2>
+                    </div>
+                  </div>
+
+                  {workspace.slackInstallation.connected ? (
+                    <div className="mt-5 grid gap-3">
+                      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-6 text-emerald-700">
+                        Connected to {workspace.slackInstallation.slackTeamName}.
+                      </p>
+                      <form action={refreshSlackChannelsAction.bind(null, workspace.id)}>
+                        <SubmitButton
+                          className="btn-secondary w-full"
+                          pendingLabel="Refreshing..."
+                        >
+                          Refresh channels
+                        </SubmitButton>
+                      </form>
+                      <form
+                        action={updateSlackChannelsAction.bind(null, workspace.id)}
+                        className="grid gap-2"
+                      >
+                        <div className="max-h-72 overflow-auto rounded-lg border border-[var(--line)] bg-white/55 p-2">
+                          {workspace.slackChannels.length === 0 ? (
+                            <p className="p-3 text-sm text-[var(--muted)]">
+                              Refresh channels to load Slack conversations.
+                            </p>
+                          ) : null}
+                          {workspace.slackChannels.map((channel) => (
+                            <label
+                              className="flex items-start gap-3 rounded-lg p-2 text-sm hover:bg-white"
+                              key={channel.id}
+                            >
+                              <input
+                                className="mt-1 size-4 accent-[#0f766e]"
+                                defaultChecked={channel.isSelected}
+                                name="selectedChannelIds"
+                                type="checkbox"
+                                value={channel.id}
+                              />
+                              <span>
+                                <span className="block font-bold text-[var(--ink)]">
+                                  #{channel.slackChannelName}
+                                </span>
+                                <span className="text-xs text-[var(--muted)]">
+                                  {channel.isPrivate ? "private" : "public"} /{" "}
+                                  {channel.channelId ? "mapped" : "not mapped"}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <SubmitButton
+                          className="btn-secondary"
+                          pendingLabel="Saving channels..."
+                        >
+                          Save Slack channels
+                        </SubmitButton>
+                      </form>
+                      <div className="grid gap-2">
+                        <form action={startSlackBackfillAction.bind(null, workspace.id)}>
+                          <SubmitButton
+                            className="btn-secondary w-full"
+                            pendingLabel="Creating jobs..."
+                          >
+                            Start full backfill
+                          </SubmitButton>
+                        </form>
+                        <form
+                          action={processSlackBackfillBatchAction.bind(
+                            null,
+                            workspace.id,
+                          )}
+                        >
+                          <SubmitButton
+                            className="btn-secondary w-full"
+                            pendingLabel="Importing..."
+                          >
+                            Import next backfill batch
+                          </SubmitButton>
+                        </form>
+                      </div>
+                    </div>
+                  ) : (
+                    <Link
+                      className="btn-primary mt-5 w-full"
+                      href={`/api/slack/oauth/start?workspaceId=${workspace.id}`}
+                    >
+                      Connect Slack
+                    </Link>
+                  )}
+
+                  {slackError ? (
+                    <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-700">
+                      {slackError}
+                    </p>
+                  ) : null}
+                  {slackMessage ? (
+                    <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-6 text-emerald-700">
+                      {slackMessage}
+                    </p>
+                  ) : null}
                 </section>
               </>
             ) : null}
