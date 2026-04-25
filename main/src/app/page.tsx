@@ -131,7 +131,7 @@ export default function Home() {
             </div>
 
             <h1 className="mt-6 max-w-5xl text-5xl font-black leading-[0.95] tracking-[-0.07em] text-[var(--ink)] md:text-7xl lg:text-8xl">
-              Stop asking the team what the project remembers.
+              Give every project a memory that answers back.
             </h1>
 
             <p className="mt-7 max-w-2xl text-lg font-medium leading-8 text-[var(--muted)] md:text-xl">
