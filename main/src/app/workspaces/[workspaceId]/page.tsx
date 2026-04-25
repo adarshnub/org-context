@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  Bot,
   MailPlus,
   MessageSquareText,
   Settings2,
@@ -10,9 +9,9 @@ import Link from "next/link";
 
 import {
   inviteUserAction,
-  updateWorkspaceProviderAction,
 } from "@/app/actions/workspace";
 import { SubmitButton } from "@/components/forms/submit-button";
+import { ProviderSettingsForm } from "@/components/workspace/provider-settings-form";
 import { getWorkspaceDetail } from "@/lib/data";
 
 export default async function WorkspacePage({
@@ -194,28 +193,10 @@ export default async function WorkspacePage({
                       </h2>
                     </div>
                   </div>
-                  <form
-                    action={updateWorkspaceProviderAction.bind(null, workspace.id)}
-                    className="mt-5 grid gap-3"
-                  >
-                    <label className="grid gap-2">
-                      <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
-                        <Bot size={16} />
-                        `/ask` model
-                      </span>
-                      <select
-                        className="field"
-                        defaultValue={workspace.answerProvider}
-                        name="provider"
-                      >
-                        <option value="cohere">Cohere</option>
-                        <option value="openai">OpenAI</option>
-                      </select>
-                    </label>
-                    <SubmitButton className="btn-secondary" pendingLabel="Saving...">
-                      Save provider
-                    </SubmitButton>
-                  </form>
+                  <ProviderSettingsForm
+                    initialProvider={workspace.answerProvider}
+                    workspaceId={workspace.id}
+                  />
                 </section>
               </>
             ) : null}

@@ -20,6 +20,18 @@ type TypingPayload = {
   workspaceId: string;
 };
 
+type ChatCommand = {
+  description: string;
+  name: string;
+};
+
+const CHAT_COMMANDS: ChatCommand[] = [
+  {
+    description: "Search this workspace channel memory.",
+    name: "ask",
+  },
+];
+
 export function ChatRoom({
   channelId,
   currentUserId,
@@ -40,7 +52,9 @@ export function ChatRoom({
   const [error, setError] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState("connecting");
   const [submitting, setSubmitting] = useState(false);
+  const [awaitingAskResponse, setAwaitingAskResponse] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, TypingPayload>>({});
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const supabase = useMemo(() => createClient(), []);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const messageFeedRef = useRef<HTMLDivElement | null>(null);
@@ -61,6 +75,29 @@ export function ChatRoom({
   const latestMessageKey = messages.length
     ? `${messages[messages.length - 1]?.id}:${messages.length}`
     : "empty";
+  const activeTypingUsers = Object.values(typingUsers);
+  const typingKey =
+    activeTypingUsers.length > 0
+      ? activeTypingUsers.map((user) => user.userId).sort().join(":")
+      : "none";
+  const askThinkingKey = awaitingAskResponse ? "thinking" : "idle";
+  const normalizedInput = input.trimStart();
+  const slashToken = normalizedInput.startsWith("/")
+    ? normalizedInput.slice(1).split(/\s+/)[0]?.toLowerCase() ?? ""
+    : "";
+  const isTypingCommandOnly = normalizedInput.startsWith("/") && !normalizedInput.includes(" ");
+  const matchingCommands = isTypingCommandOnly
+    ? CHAT_COMMANDS.filter((command) => command.name.startsWith(slashToken))
+    : [];
+  const showCommandSuggestions = matchingCommands.length > 0;
+  const activeCommand =
+    slashToken.length > 0
+      ? CHAT_COMMANDS.find((command) => command.name === slashToken) ?? null
+      : null;
+
+  useEffect(() => {
+    setActiveCommandIndex(0);
+  }, [slashToken]);
 
   const normalizeRealtimeRow = useMemo(() => {
     return (row: Record<string, unknown>): PendingMessage | null => {
@@ -118,7 +155,7 @@ export function ChatRoom({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [latestMessageKey, messages.length]);
+  }, [askThinkingKey, latestMessageKey, messages.length, typingKey]);
 
   useEffect(() => {
     console.log("[org-context:chat.realtime.subscribe]", {
@@ -156,6 +193,25 @@ export function ChatRoom({
           setMessages((current) => {
             if (current.some((message) => message.id === nextMessage.id)) {
               return current;
+            }
+
+            // Reconcile local optimistic message with realtime insert to avoid
+            // showing the same outbound message twice while request is in-flight.
+            const optimisticIndex =
+              nextMessage.senderId === currentUserId
+                ? current.findIndex(
+                    (message) =>
+                      message.pending &&
+                      message.senderId === currentUserId &&
+                      message.messageType === nextMessage.messageType &&
+                      message.body === nextMessage.body,
+                  )
+                : -1;
+
+            if (optimisticIndex >= 0) {
+              const withoutOptimistic = [...current];
+              withoutOptimistic.splice(optimisticIndex, 1);
+              return [...withoutOptimistic, nextMessage];
             }
 
             return [...current, nextMessage];
@@ -299,8 +355,43 @@ export function ChatRoom({
     }, 1200);
   }
 
+  function applyCommand(name: string) {
+    const withoutLeadingWhitespace = input.trimStart();
+    const leadingWhitespace = input.slice(
+      0,
+      Math.max(0, input.length - withoutLeadingWhitespace.length),
+    );
+    const firstSpaceIndex = withoutLeadingWhitespace.indexOf(" ");
+    const remainingText =
+      firstSpaceIndex >= 0 ? withoutLeadingWhitespace.slice(firstSpaceIndex + 1).trim() : "";
+
+    setInput(
+      `${leadingWhitespace}/${name}${remainingText.length > 0 ? ` ${remainingText}` : " "}`,
+    );
+    void broadcastTyping(true);
+  }
+
+  function renderMessageBody(message: PendingMessage) {
+    if (!message.commandName || !message.body.startsWith(`/${message.commandName}`)) {
+      return <p className="whitespace-pre-wrap text-sm leading-7">{message.body}</p>;
+    }
+
+    const commandToken = `/${message.commandName}`;
+    const rest = message.body.slice(commandToken.length);
+
+    return (
+      <p className="whitespace-pre-wrap text-sm leading-7">
+        <span className="mr-1 inline-flex rounded-md border border-teal-300 bg-teal-100 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide text-teal-900">
+          {commandToken}
+        </span>
+        {rest}
+      </p>
+    );
+  }
+
   async function sendMessage() {
     const text = input.trim();
+    const isAsk = text.startsWith("/ask ");
 
     if (!text || submitting) {
       return;
@@ -309,10 +400,10 @@ export function ChatRoom({
     setSubmitting(true);
     setError(null);
     setInput("");
+    setAwaitingAskResponse(isAsk);
     void broadcastTyping(false);
 
     const tempId = `temp-${crypto.randomUUID()}`;
-    const isAsk = text.startsWith("/ask ");
     const optimistic: PendingMessage = {
       body: text,
       channelId,
@@ -396,6 +487,7 @@ export function ChatRoom({
       );
       setInput(text);
     } finally {
+      setAwaitingAskResponse(false);
       setSubmitting(false);
     }
   }
@@ -477,7 +569,7 @@ export function ChatRoom({
                     )}
                   </span>
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-7">{message.body}</p>
+                {renderMessageBody(message)}
                 {message.citations.length > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-black/10 pt-3">
                     {message.citations.map((citation) => (
@@ -494,6 +586,31 @@ export function ChatRoom({
               </article>
             );
           })}
+
+          {activeTypingUsers.length > 0 ? (
+            <div className="mt-1 flex items-center gap-2 px-1 text-sm font-semibold text-[var(--teal)]">
+              <span className="flex gap-1">
+                <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_infinite]" />
+                <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_120ms_infinite]" />
+                <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_240ms_infinite]" />
+              </span>
+              {activeTypingUsers.map((user) => user.userName).join(", ")}{" "}
+              {activeTypingUsers.length === 1 ? "is" : "are"} typing
+            </div>
+          ) : null}
+
+          {awaitingAskResponse ? (
+            <article className="animate-rise max-w-[min(46rem,92%)] self-start rounded-lg border border-lime-200 bg-lime-50 p-4 text-slate-800">
+              <div className="mb-2 flex items-center gap-2 text-xs font-bold">
+                <Bot size={14} />
+                Org Context
+              </div>
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-lime-800">
+                <LoaderCircle className="animate-spin" size={14} />
+                Thinking through your `/ask` request...
+              </div>
+            </article>
+          ) : null}
         </div>
       </section>
 
@@ -501,15 +618,56 @@ export function ChatRoom({
         <label className="grid gap-2" htmlFor="chat-input">
           <span className="eyebrow">Message</span>
           <textarea
-            className="field min-h-16 resize-none disabled:opacity-70"
+            className={`field min-h-16 resize-none disabled:opacity-70 ${
+              activeCommand
+                ? "border-teal-300 bg-teal-50/40 ring-2 ring-teal-100"
+                : showCommandSuggestions
+                  ? "border-sky-300 bg-sky-50/40"
+                  : ""
+            }`}
             disabled={submitting}
             id="chat-input"
             onBlur={() => void broadcastTyping(false)}
             onChange={(event) => handleInputChange(event.target.value)}
             onKeyDown={(event) => {
+              if (showCommandSuggestions) {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setActiveCommandIndex((current) => (current + 1) % matchingCommands.length);
+                  return;
+                }
+
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setActiveCommandIndex(
+                    (current) =>
+                      (current - 1 + matchingCommands.length) % matchingCommands.length,
+                  );
+                  return;
+                }
+
+                if (event.key === "Tab") {
+                  event.preventDefault();
+                  const selected = matchingCommands[activeCommandIndex];
+
+                  if (selected) {
+                    applyCommand(selected.name);
+                  }
+                  return;
+                }
+              }
+
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                void sendMessage();
+                if (showCommandSuggestions) {
+                  const selected = matchingCommands[activeCommandIndex];
+
+                  if (selected) {
+                    applyCommand(selected.name);
+                  }
+                } else {
+                  void sendMessage();
+                }
               }
             }}
             placeholder="Share an update or use /ask What did we decide about launch?"
@@ -517,17 +675,29 @@ export function ChatRoom({
             value={input}
           />
         </label>
-        {Object.values(typingUsers).length > 0 ? (
-          <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-[var(--teal)]">
-            <span className="flex gap-1">
-              <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_infinite]" />
-              <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_120ms_infinite]" />
-              <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_240ms_infinite]" />
-            </span>
-            {Object.values(typingUsers)
-              .map((user) => user.userName)
-              .join(", ")}{" "}
-            {Object.values(typingUsers).length === 1 ? "is" : "are"} typing
+        {showCommandSuggestions ? (
+          <div className="mt-2 overflow-hidden rounded-lg border border-sky-200 bg-white">
+            {matchingCommands.map((command, index) => {
+              const selected = index === activeCommandIndex;
+              return (
+                <button
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
+                    selected ? "bg-sky-50 text-sky-900" : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  key={command.name}
+                  onClick={() => applyCommand(command.name)}
+                  type="button"
+                >
+                  <span className="font-semibold text-[var(--ink)]">/{command.name}</span>
+                  <span className="text-xs text-slate-500">{command.description}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        {activeCommand ? (
+          <div className="mt-2 inline-flex items-center rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-700">
+            Command selected: /{activeCommand.name}
           </div>
         ) : null}
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
