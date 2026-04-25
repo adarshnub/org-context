@@ -1,5 +1,6 @@
 "use client";
 
+import { Bot, Radio, Send, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
@@ -28,7 +29,9 @@ export function ChatRoom({
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<PendingMessage[]>(initialMessages);
   const [error, setError] = useState<string | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState("connecting");
   const [submitting, setSubmitting] = useState(false);
+  const supabase = useMemo(() => createClient(), []);
 
   const memberNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -39,46 +42,70 @@ export function ChatRoom({
     return map;
   }, [currentUserId, currentUserName, members]);
 
+  const normalizeRealtimeRow = useMemo(() => {
+    return (row: Record<string, unknown>): PendingMessage | null => {
+      if (
+        String(row.workspace_id) !== workspaceId ||
+        String(row.channel_id) !== channelId
+      ) {
+        console.warn("[org-context:chat.realtime.ignored]", {
+          channelId,
+          row,
+          workspaceId,
+        });
+
+        return null;
+      }
+
+      const senderId = typeof row.sender_id === "string" ? row.sender_id : null;
+
+      return {
+        body: String(row.body ?? ""),
+        channelId: String(row.channel_id),
+        citations: Array.isArray(row.citations)
+          ? (row.citations as ChatMessage["citations"])
+          : [],
+        commandName:
+          typeof row.command_name === "string" ? row.command_name : null,
+        createdAt: String(row.created_at),
+        embeddingStatus: row.embedding_status as ChatMessage["embeddingStatus"],
+        id: String(row.id),
+        messageType: row.message_type as ChatMessage["messageType"],
+        senderId,
+        senderName:
+          (senderId && memberNameMap.get(senderId)) ||
+          (senderId ? "Workspace member" : "Org Context"),
+        workspaceId: String(row.workspace_id),
+      };
+    };
+  }, [channelId, memberNameMap, workspaceId]);
+
   useEffect(() => {
     console.log("[org-context:chat.realtime.subscribe]", {
       channelId,
       workspaceId,
     });
 
-    const supabase = createClient();
     const channel = supabase
       .channel(`workspace-${workspaceId}-${channelId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
-          filter: `channel_id=eq.${channelId}`,
+          filter: `workspace_id=eq.${workspaceId}`,
           schema: "public",
           table: "chat_messages",
         },
         (payload) => {
           console.log("[org-context:chat.realtime.insert]", payload.new);
 
-          const row = payload.new as Record<string, unknown>;
-          const nextMessage: PendingMessage = {
-            body: String(row.body ?? ""),
-            channelId: String(row.channel_id),
-            citations: Array.isArray(row.citations)
-              ? (row.citations as ChatMessage["citations"])
-              : [],
-            commandName:
-              typeof row.command_name === "string" ? row.command_name : null,
-            createdAt: String(row.created_at),
-            embeddingStatus: row.embedding_status as ChatMessage["embeddingStatus"],
-            id: String(row.id),
-            messageType: row.message_type as ChatMessage["messageType"],
-            senderId: typeof row.sender_id === "string" ? row.sender_id : null,
-            senderName:
-              (typeof row.sender_id === "string" &&
-                memberNameMap.get(String(row.sender_id))) ||
-              "Org Context",
-            workspaceId: String(row.workspace_id),
-          };
+          const nextMessage = normalizeRealtimeRow(
+            payload.new as Record<string, unknown>,
+          );
+
+          if (!nextMessage) {
+            return;
+          }
 
           setMessages((current) => {
             if (current.some((message) => message.id === nextMessage.id)) {
@@ -89,7 +116,48 @@ export function ChatRoom({
           });
         },
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          filter: `workspace_id=eq.${workspaceId}`,
+          schema: "public",
+          table: "chat_messages",
+        },
+        (payload) => {
+          console.log("[org-context:chat.realtime.update]", payload.new);
+
+          const nextMessage = normalizeRealtimeRow(
+            payload.new as Record<string, unknown>,
+          );
+
+          if (!nextMessage) {
+            return;
+          }
+
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === nextMessage.id
+                ? { ...message, ...nextMessage, pending: false }
+                : message,
+            ),
+          );
+        },
+      )
+      .subscribe((status, error) => {
+        console.log("[org-context:chat.realtime.status]", {
+          error,
+          status,
+          channelId,
+          workspaceId,
+        });
+
+        setRealtimeStatus(status.toLowerCase());
+
+        if (error) {
+          setError(`Realtime subscription failed: ${error.message}`);
+        }
+      });
 
     return () => {
       console.log("[org-context:chat.realtime.unsubscribe]", {
@@ -98,7 +166,7 @@ export function ChatRoom({
       });
       void supabase.removeChannel(channel);
     };
-  }, [channelId, memberNameMap, workspaceId]);
+  }, [channelId, normalizeRealtimeRow, supabase, workspaceId]);
 
   async function sendMessage() {
     const text = input.trim();
@@ -112,15 +180,16 @@ export function ChatRoom({
     setInput("");
 
     const tempId = `temp-${crypto.randomUUID()}`;
+    const isAsk = text.startsWith("/ask ");
     const optimistic: PendingMessage = {
       body: text,
       channelId,
       citations: [],
-      commandName: text.startsWith("/ask ") ? "ask" : null,
+      commandName: isAsk ? "ask" : null,
       createdAt: new Date().toISOString(),
       embeddingStatus: "pending",
       id: tempId,
-      messageType: text.startsWith("/ask ") ? "command" : "user",
+      messageType: isAsk ? "command" : "user",
       pending: true,
       senderId: currentUserId,
       senderName: currentUserName,
@@ -129,7 +198,7 @@ export function ChatRoom({
 
     setMessages((current) => [...current, optimistic]);
 
-    const endpoint = text.startsWith("/ask ") ? "/api/chat/ask" : "/api/chat/send";
+    const endpoint = isAsk ? "/api/chat/ask" : "/api/chat/send";
 
     try {
       console.log("[org-context:chat.send.start]", {
@@ -201,61 +270,76 @@ export function ChatRoom({
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-[2rem] border border-black/10 bg-white/90 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-              General channel
-            </p>
-            <h2 className="font-mono text-sm text-slate-800">
-              Realtime team context and `/ask`
-            </h2>
+      <section className="surface overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/70 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
+              <Radio size={18} />
+            </span>
+            <div>
+              <p className="eyebrow">General channel</p>
+              <h2 className="text-lg font-bold text-[var(--ink)]">
+                Live workspace memory
+              </h2>
+            </div>
           </div>
-          <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-            {members.length} members
-          </div>
+          <span className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+            {members.length} members / realtime {realtimeStatus}
+          </span>
         </div>
 
-        <div className="grid max-h-[30rem] gap-3 overflow-y-auto pr-1">
+        <div className="grid max-h-[34rem] min-h-[24rem] gap-3 overflow-y-auto p-5">
           {messages.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-              This workspace is ready for its first message.
+            <div className="grid place-items-center rounded-lg border border-dashed border-[var(--line)] bg-white/45 p-8 text-center">
+              <div>
+                <Sparkles className="mx-auto text-[var(--teal)]" size={28} />
+                <p className="mt-3 text-sm font-bold text-[var(--ink)]">
+                  This workspace is ready.
+                </p>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  Send the first message or ask a question with `/ask`.
+                </p>
+              </div>
             </div>
           ) : null}
 
           {messages.map((message) => {
             const mine = message.senderId === currentUserId;
-            const accent =
-              message.messageType === "assistant"
-                ? "bg-amber-50 border-amber-200"
-                : message.messageType === "command"
-                  ? "bg-sky-50 border-sky-200"
-                  : mine
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-slate-50 border-slate-200";
+            const assistant = message.messageType === "assistant";
+            const command = message.messageType === "command";
+            const bubble = assistant
+              ? "border-lime-200 bg-lime-50 text-slate-800"
+              : command
+                ? "border-teal-200 bg-teal-50 text-slate-800"
+                : mine
+                  ? "ml-auto border-[#13201d] bg-[#13201d] text-white"
+                  : "border-[var(--line)] bg-white text-slate-800";
 
             return (
               <article
-                className={`rounded-3xl border px-4 py-3 ${accent}`}
+                className={`animate-rise max-w-[min(46rem,92%)] rounded-lg border p-4 ${bubble} ${
+                  message.pending ? "opacity-70" : ""
+                }`}
                 key={message.id}
               >
-                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                  <span className="font-semibold uppercase tracking-[0.2em]">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <span className="flex items-center gap-2 font-bold">
+                    {assistant ? <Bot size={14} /> : null}
                     {message.senderName}
                   </span>
-                  <span className={mine ? "text-white/70" : "text-slate-500"}>
-                    {formatTimestamp(message.createdAt)}
+                  <span className={mine && !assistant ? "text-white/70" : "text-slate-500"}>
+                    {message.pending ? "Sending..." : formatTimestamp(message.createdAt)}
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm leading-7">{message.body}</p>
                 {message.citations.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-black/10 pt-3">
                     {message.citations.map((citation) => (
                       <span
-                        className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700"
+                        className="rounded-md bg-white/80 px-2.5 py-1 text-xs font-bold text-slate-600"
                         key={`${message.id}-${citation.messageId}`}
                       >
-                        Source {citation.messageId.slice(0, 8)} ·{" "}
+                        Source {citation.messageId.slice(0, 8)} /{" "}
                         {citation.similarity.toFixed(3)}
                       </span>
                     ))}
@@ -265,34 +349,40 @@ export function ChatRoom({
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div className="rounded-[2rem] border border-black/10 bg-white/90 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-        <label
-          className="mb-2 block text-xs font-semibold uppercase tracking-[0.3em] text-slate-500"
-          htmlFor="chat-input"
-        >
-          Message workspace
-        </label>
-        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+      <section className="surface p-4">
+        <label className="grid gap-3" htmlFor="chat-input">
+          <span className="eyebrow">Message</span>
           <textarea
-            className="min-h-28 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
+            className="field min-h-24 resize-y"
             id="chat-input"
             onChange={(event) => setInput(event.target.value)}
             placeholder="Share an update or use /ask What did we decide about launch?"
             value={input}
           />
+        </label>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {error ? (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--muted)]">
+              `/ask` searches this workspace channel only.
+            </p>
+          )}
           <button
-            className="rounded-[1.5rem] bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary"
             disabled={submitting}
             onClick={() => void sendMessage()}
             type="button"
           >
             {submitting ? "Sending..." : "Send"}
+            <Send size={16} />
           </button>
         </div>
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-      </div>
+      </section>
     </div>
   );
 }

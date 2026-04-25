@@ -1,3 +1,4 @@
+import { ArrowRight, KeyRound, Mail } from "lucide-react";
 import Link from "next/link";
 
 import { redirectIfAuthenticated } from "@/lib/auth";
@@ -16,79 +17,77 @@ export default async function LoginPage({
   const message = typeof params.message === "string" ? params.message : null;
 
   return (
-    <main className="min-h-screen px-6 py-10">
-      <div className="mx-auto grid max-w-5xl gap-8 md:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[2rem] border border-black/10 bg-white/80 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-          <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--accent)]">
-            Welcome back
-          </p>
-          <h1 className="mt-4 text-4xl font-semibold text-slate-950">
-            Log into your team memory hub.
+    <main className="min-h-screen py-6">
+      <div className="app-shell grid min-h-[calc(100vh-3rem)] gap-8 lg:grid-cols-[0.9fr_1fr] lg:items-center">
+        <section className="animate-rise">
+          <Link className="eyebrow" href="/">
+            Org Context
+          </Link>
+          <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-[1.05] text-[var(--ink)]">
+            Return to your team memory hub.
           </h1>
-          <p className="mt-4 text-base leading-8 text-slate-600">
-            Continue into your dashboard to create workspaces, invite teammates,
-            and search your chat history with `/ask`.
+          <p className="mt-5 max-w-lg text-base leading-7 text-[var(--muted)]">
+            Pick up the workspace thread, invite teammates, and ask the chat
+            what the project already knows.
           </p>
-          <p className="mt-6 text-sm text-slate-600">
+          <p className="mt-8 text-sm text-[var(--muted)]">
             Need an account?{" "}
-            <Link
-              className="font-semibold text-slate-900"
-              href="/signup"
-            >
-              Sign up here
+            <Link className="font-bold text-[var(--teal)]" href="/signup">
+              Create one
             </Link>
             .
           </p>
         </section>
 
-        <section className="rounded-[2rem] border border-black/10 bg-white/90 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-          <form
-            action={loginAction}
-            className="grid gap-4"
-          >
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="email"
-              >
+        <section className="animate-rise stagger-1 surface p-6 md:p-8">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
+              <KeyRound size={18} />
+            </span>
+            <div>
+              <p className="eyebrow">Login</p>
+              <h2 className="text-xl font-bold text-[var(--ink)]">
+                Access dashboard
+              </h2>
+            </div>
+          </div>
+
+          <form action={loginAction} className="grid gap-4">
+            <label className="grid gap-2">
+              <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
+                <Mail size={15} />
                 Email
-              </label>
+              </span>
               <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
+                className="field"
                 defaultValue={email}
-                id="email"
                 name="email"
                 placeholder="jane@company.com"
                 required
                 type="email"
               />
-            </div>
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="password"
-              >
+            </label>
+            <label className="grid gap-2">
+              <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
+                <KeyRound size={15} />
                 Password
-              </label>
-              <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
-                id="password"
-                name="password"
-                required
-                type="password"
-              />
-            </div>
-            {error ? <p className="text-sm leading-6 text-rose-600">{error}</p> : null}
+              </span>
+              <input className="field" name="password" required type="password" />
+            </label>
+
+            {error ? (
+              <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+                {error}
+              </p>
+            ) : null}
             {message ? (
-              <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-700">
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-700">
                 {message}
               </p>
             ) : null}
-          <SubmitButton
-            className="mt-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
-            pendingLabel="Logging in..."
-          >
-            Log in
+
+            <SubmitButton className="btn-primary mt-2" pendingLabel="Logging in...">
+              Log in <ArrowRight size={16} />
             </SubmitButton>
           </form>
         </section>

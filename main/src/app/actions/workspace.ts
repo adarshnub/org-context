@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -24,6 +25,7 @@ export async function inviteUserAction(workspaceId: string, formData: FormData) 
   const values = inviteSchema.parse({
     email: formData.get("email"),
   });
+  const normalizedEmail = values.email.toLowerCase();
 
   const { user } = await requireUser();
   await requireOwner(workspaceId, user.id);
@@ -32,11 +34,54 @@ export async function inviteUserAction(workspaceId: string, formData: FormData) 
   const { data: profile } = await admin
     .from("profiles")
     .select("id, email")
-    .eq("email", values.email.toLowerCase())
+    .eq("email", normalizedEmail)
     .maybeSingle();
 
   if (!profile) {
-    throw new Error("Invite failed because that email is not registered yet.");
+    redirect(
+      `/workspaces/${workspaceId}?inviteError=${encodeURIComponent(
+        "That email is not registered yet. Ask them to sign up first.",
+      )}`,
+    );
+  }
+
+  if (profile.id === user.id) {
+    redirect(
+      `/workspaces/${workspaceId}?inviteError=${encodeURIComponent(
+        "You are already the owner of this workspace.",
+      )}`,
+    );
+  }
+
+  const { data: existingMembership } = await admin
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", profile.id)
+    .maybeSingle();
+
+  if (existingMembership) {
+    redirect(
+      `/workspaces/${workspaceId}?inviteError=${encodeURIComponent(
+        "That teammate is already a member of this workspace.",
+      )}`,
+    );
+  }
+
+  const { data: existingInvite } = await admin
+    .from("workspace_invites")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("invited_user_id", profile.id)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (existingInvite) {
+    redirect(
+      `/workspaces/${workspaceId}?inviteMessage=${encodeURIComponent(
+        "That teammate already has a pending invite.",
+      )}`,
+    );
   }
 
   const { error } = await admin.from("workspace_invites").insert({
@@ -47,11 +92,26 @@ export async function inviteUserAction(workspaceId: string, formData: FormData) 
   });
 
   if (error) {
-    throw new Error(error.message);
+    if (error.code === "23505") {
+      redirect(
+        `/workspaces/${workspaceId}?inviteMessage=${encodeURIComponent(
+          "That teammate already has a pending invite.",
+        )}`,
+      );
+    }
+
+    redirect(
+      `/workspaces/${workspaceId}?inviteError=${encodeURIComponent(error.message)}`,
+    );
   }
 
   revalidatePath(`/workspaces/${workspaceId}`);
   revalidatePath("/dashboard");
+  redirect(
+    `/workspaces/${workspaceId}?inviteMessage=${encodeURIComponent(
+      `Invite sent to ${profile.email}.`,
+    )}`,
+  );
 }
 
 export async function updateWorkspaceProviderAction(

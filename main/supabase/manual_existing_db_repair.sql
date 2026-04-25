@@ -88,6 +88,8 @@ as $$
   );
 $$;
 
+alter table public.chat_messages replica identity full;
+
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own"
   on public.profiles
@@ -133,5 +135,5 @@ begin
 exception
   when duplicate_object then null;
   when undefined_object then null;
-end
+end;
 $$;

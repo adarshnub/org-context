@@ -112,6 +112,8 @@ create table if not exists public.chat_messages (
   created_at timestamptz not null default now()
 );
 
+alter table public.chat_messages replica identity full;
+
 create table if not exists public.chat_message_embeddings (
   message_id uuid primary key references public.chat_messages(id) on delete cascade,
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -394,5 +396,5 @@ begin
 exception
   when duplicate_object then null;
   when undefined_object then null;
-end
+end;
 $$;

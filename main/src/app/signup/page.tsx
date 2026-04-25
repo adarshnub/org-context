@@ -1,3 +1,4 @@
+import { ArrowRight, Building2, KeyRound, Mail, UserRound } from "lucide-react";
 import Link from "next/link";
 
 import { signupAction } from "@/app/actions/auth";
@@ -14,109 +15,102 @@ export default async function SignupPage({
   const error = typeof params.error === "string" ? params.error : null;
 
   return (
-    <main className="min-h-screen px-6 py-10">
-      <div className="mx-auto grid max-w-5xl gap-8 md:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[2rem] border border-black/10 bg-white/80 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-          <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--accent)]">
-            Create account
-          </p>
-          <h1 className="mt-4 text-4xl font-semibold text-slate-950">
-            Start building your project workflow brain.
+    <main className="min-h-screen py-6">
+      <div className="app-shell grid min-h-[calc(100vh-3rem)] gap-8 lg:grid-cols-[0.9fr_1fr] lg:items-center">
+        <section className="animate-rise">
+          <Link className="eyebrow" href="/">
+            Org Context
+          </Link>
+          <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-[1.05] text-[var(--ink)]">
+            Create the first workspace memory layer.
           </h1>
-          <p className="mt-4 text-base leading-8 text-slate-600">
-            Create your account, then head straight into the dashboard to open
-            workspaces and bring your teammates into shared realtime context.
+          <p className="mt-5 max-w-lg text-base leading-7 text-[var(--muted)]">
+            Sign up, create a workspace, and start turning the team channel into
+            searchable project context.
           </p>
-          <p className="mt-4 text-sm leading-7 text-slate-500">
-            If email confirmation is enabled in Supabase, you will need to
-            confirm your email before the first login.
-          </p>
-          <p className="mt-6 text-sm text-slate-600">
+          <p className="mt-8 text-sm text-[var(--muted)]">
             Already registered?{" "}
-            <Link
-              className="font-semibold text-slate-900"
-              href="/login"
-            >
+            <Link className="font-bold text-[var(--teal)]" href="/login">
               Log in
             </Link>
             .
           </p>
         </section>
 
-        <section className="rounded-[2rem] border border-black/10 bg-white/90 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-          <form
-            action={signupAction}
-            className="grid gap-4"
-          >
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="fullName"
-              >
+        <section className="animate-rise stagger-1 surface p-6 md:p-8">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
+              <UserRound size={18} />
+            </span>
+            <div>
+              <p className="eyebrow">Signup</p>
+              <h2 className="text-xl font-bold text-[var(--ink)]">
+                Build your profile
+              </h2>
+            </div>
+          </div>
+
+          <form action={signupAction} className="grid gap-4">
+            <label className="grid gap-2">
+              <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
+                <UserRound size={15} />
                 Full name
-              </label>
+              </span>
               <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
-                id="fullName"
+                className="field"
                 name="fullName"
                 placeholder="Jane Smith"
                 required
                 type="text"
               />
-            </div>
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="companyName"
-              >
+            </label>
+            <label className="grid gap-2">
+              <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
+                <Building2 size={15} />
                 Company
-              </label>
+              </span>
               <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
-                id="companyName"
+                className="field"
                 name="companyName"
                 placeholder="Orbit Labs"
                 required
                 type="text"
               />
-            </div>
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="email"
-              >
+            </label>
+            <label className="grid gap-2">
+              <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
+                <Mail size={15} />
                 Email
-              </label>
+              </span>
               <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
-                id="email"
+                className="field"
                 name="email"
                 placeholder="jane@company.com"
                 required
                 type="email"
               />
-            </div>
-            <div className="grid gap-2">
-              <label
-                className="text-sm font-medium text-slate-700"
-                htmlFor="password"
-              >
+            </label>
+            <label className="grid gap-2">
+              <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
+                <KeyRound size={15} />
                 Password
-              </label>
-              <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
-                id="password"
-                name="password"
-                required
-                type="password"
-              />
-            </div>
-            {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-            <SubmitButton
-              className="mt-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
-              pendingLabel="Creating account..."
-            >
-              Sign up
+              </span>
+              <input className="field" name="password" required type="password" />
+            </label>
+
+            {error ? (
+              <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+                {error}
+              </p>
+            ) : (
+              <p className="text-sm leading-6 text-[var(--muted)]">
+                If Supabase email confirmation is enabled, confirm your email
+                before the first login.
+              </p>
+            )}
+
+            <SubmitButton className="btn-primary mt-2" pendingLabel="Creating account...">
+              Sign up <ArrowRight size={16} />
             </SubmitButton>
           </form>
         </section>

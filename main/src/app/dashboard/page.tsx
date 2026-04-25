@@ -1,3 +1,4 @@
+import { Inbox, LogOut, MessageSquareText, Plus, Settings2, UsersRound } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -19,169 +20,177 @@ export default async function DashboardPage({
   const { invites, profile, workspaces } = await getDashboardData();
 
   return (
-    <main className="min-h-screen px-6 py-8 md:px-10">
-      <div className="mx-auto grid max-w-6xl gap-6">
-        <header className="grid gap-4 rounded-[2rem] border border-black/10 bg-white/85 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] md:grid-cols-[1fr_auto] md:items-start">
+    <main className="min-h-screen py-6">
+      <div className="app-shell grid gap-5">
+        <header className="animate-rise flex flex-col gap-5 border-b border-[var(--line)] pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--accent)]">
-              Dashboard
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold text-slate-950">
-              Welcome, {profile?.full_name ?? "teammate"}.
+            <p className="eyebrow">Dashboard</p>
+            <h1 className="mt-2 text-4xl font-semibold text-[var(--ink)]">
+              Welcome, {profile?.full_name ?? "teammate"}
             </h1>
-            <p className="mt-3 max-w-3xl text-base leading-8 text-slate-600">
-              Create multiple workspaces, keep each team in a shared realtime
-              channel, and let `/ask` retrieve the right context from the chat
-              history.
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+              Manage workspaces, accept invites, and keep each project channel
+              ready for realtime context retrieval.
             </p>
           </div>
           <form action={logoutAction}>
-            <SubmitButton
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-              pendingLabel="Signing out..."
-            >
+            <SubmitButton className="btn-secondary" pendingLabel="Signing out...">
+              <LogOut size={16} />
               Sign out
             </SubmitButton>
           </form>
         </header>
 
-        <section className="grid gap-6 md:grid-cols-[0.9fr_1.1fr]">
-          <div className="rounded-[2rem] border border-black/10 bg-white/85 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-            <p className="font-mono text-xs uppercase tracking-[0.3em] text-slate-500">
-              Create workspace
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-slate-950">
-              Start a new team context space.
-            </h2>
+        <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
+          <aside className="animate-rise stagger-1 surface p-5">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
+                <Plus size={18} />
+              </span>
+              <div>
+                <p className="eyebrow">Create</p>
+                <h2 className="text-lg font-bold text-[var(--ink)]">
+                  New workspace
+                </h2>
+              </div>
+            </div>
+
             {error ? (
-              <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
+              <p className="mt-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
                 {error}
               </p>
             ) : null}
-            <form
-              action={createWorkspaceAction}
-              className="mt-6 grid gap-3"
-            >
-              <input
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-900"
-                name="name"
-                placeholder="Launch Squad"
-                required
-                type="text"
-              />
-              <SubmitButton
-                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
-                pendingLabel="Creating..."
-              >
-                Create workspace
+
+            <form action={createWorkspaceAction} className="mt-5 grid gap-3">
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-[var(--ink)]">
+                  Workspace name
+                </span>
+                <input
+                  className="field"
+                  name="name"
+                  placeholder="Launch Squad"
+                  required
+                  type="text"
+                />
+              </label>
+              <SubmitButton className="btn-primary" pendingLabel="Creating...">
+                Create workspace <Plus size={16} />
               </SubmitButton>
             </form>
 
-            <div className="mt-8 rounded-[1.5rem] bg-slate-50 p-4 text-sm leading-7 text-slate-600">
-              Each workspace starts with one default realtime chat channel named
-              `general`, owner-managed invites, and provider selection for
-              `/ask`.
+            <div className="mt-6 border-t border-[var(--line)] pt-5">
+              <p className="text-sm leading-6 text-[var(--muted)]">
+                Every workspace starts with a `general` channel, owner-managed
+                invites, and a selectable `/ask` answer provider.
+              </p>
             </div>
-          </div>
+          </aside>
 
-          <div className="grid gap-6">
-            <section className="rounded-[2rem] border border-black/10 bg-white/85 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-              <div className="flex items-center justify-between gap-3">
+          <div className="grid gap-5">
+            <section className="animate-rise stagger-2 surface p-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="font-mono text-xs uppercase tracking-[0.3em] text-slate-500">
-                    Workspaces
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                    Your active spaces
+                  <p className="eyebrow">Workspaces</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-[var(--ink)]">
+                    Active project spaces
                   </h2>
                 </div>
-                <div className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-slate-700">
+                <span className="rounded-md border border-[var(--line)] bg-white/70 px-3 py-2 text-sm font-bold text-[var(--ink)]">
                   {workspaces.length} total
-                </div>
+                </span>
               </div>
 
-              <div className="mt-5 grid gap-4">
+              <div className="mt-5 grid gap-3">
                 {workspaces.length === 0 ? (
-                  <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                    No workspaces yet. Create your first one from the panel on
-                    the left.
+                  <div className="surface-plain flex items-start gap-3 p-4">
+                    <Inbox className="text-[var(--muted)]" size={20} />
+                    <p className="text-sm leading-6 text-[var(--muted)]">
+                      No workspaces yet. Create one to open the team chat.
+                    </p>
                   </div>
                 ) : null}
+
                 {workspaces.map((workspace) => (
-                  <Link
-                    className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-900 hover:bg-white"
-                    href={`/workspaces/${workspace.id}`}
+                  <article
+                    className="group surface-plain grid gap-3 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:bg-white"
                     key={workspace.id}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-lg font-semibold text-slate-900">
-                        {workspace.name}
-                      </h3>
-                      <span className="rounded-full bg-white px-3 py-1 font-mono text-xs uppercase tracking-[0.2em] text-slate-500">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-[var(--ink)]">
+                          {workspace.name}
+                        </h3>
+                        <p className="mt-1 text-sm text-[var(--muted)]">
+                          {workspace.slug} / {workspace.answerProvider}
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                        <UsersRound size={14} />
                         {workspace.role}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm text-slate-600">
-                      Slug: {workspace.slug} · `/ask` provider:{" "}
-                      {workspace.answerProvider}
-                    </p>
-                  </Link>
+                    <div className="h-px bg-[var(--line)] transition group-hover:bg-teal-500/40" />
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        className="btn-primary"
+                        href={`/workspaces/${workspace.id}/chat`}
+                      >
+                        <MessageSquareText size={16} />
+                        Open chat
+                      </Link>
+                      <Link
+                        className="btn-secondary"
+                        href={`/workspaces/${workspace.id}`}
+                      >
+                        <Settings2 size={16} />
+                        Overview
+                      </Link>
+                    </div>
+                  </article>
                 ))}
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-black/10 bg-white/85 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-              <p className="font-mono text-xs uppercase tracking-[0.3em] text-slate-500">
-                Pending invites
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
-                Invitations waiting for you
-              </h2>
+            <section className="animate-rise stagger-3 surface p-5">
+              <div className="flex items-center gap-3">
+                <Inbox className="text-[var(--teal)]" size={20} />
+                <div>
+                  <p className="eyebrow">Invites</p>
+                  <h2 className="text-xl font-semibold text-[var(--ink)]">
+                    Pending invitations
+                  </h2>
+                </div>
+              </div>
 
-              <div className="mt-5 grid gap-4">
+              <div className="mt-5 grid gap-3">
                 {invites.length === 0 ? (
-                  <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                  <div className="surface-plain p-4 text-sm text-[var(--muted)]">
                     No pending invites right now.
                   </div>
                 ) : null}
+
                 {invites.map((invite) => (
-                  <div
-                    className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5"
-                    key={invite.id}
-                  >
-                    <div className="flex items-start justify-between gap-4">
+                  <div className="surface-plain p-4" key={invite.id}>
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900">
+                        <h3 className="font-bold text-[var(--ink)]">
                           {invite.workspaceName}
                         </h3>
-                        <p className="mt-2 text-sm text-slate-600">
+                        <p className="mt-1 text-sm text-[var(--muted)]">
                           Invited as {invite.invitedEmail}
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <form action={acceptInviteAction}>
-                          <input
-                            name="inviteId"
-                            type="hidden"
-                            value={invite.id}
-                          />
-                          <SubmitButton
-                            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-                            pendingLabel="Joining..."
-                          >
+                          <input name="inviteId" type="hidden" value={invite.id} />
+                          <SubmitButton className="btn-primary" pendingLabel="Joining...">
                             Accept
                           </SubmitButton>
                         </form>
                         <form action={declineInviteAction}>
-                          <input
-                            name="inviteId"
-                            type="hidden"
-                            value={invite.id}
-                          />
-                          <SubmitButton
-                            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-                            pendingLabel="Updating..."
-                          >
+                          <input name="inviteId" type="hidden" value={invite.id} />
+                          <SubmitButton className="btn-secondary" pendingLabel="Updating...">
                             Decline
                           </SubmitButton>
                         </form>

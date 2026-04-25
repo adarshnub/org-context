@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
 import { serverDebug, serverError } from "@/lib/debug";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   ChatMessage,
   Citation,
@@ -44,7 +45,7 @@ export async function getDashboardData() {
   const [
     { data: profile, error: profileError },
     { data: memberships, error: membershipsError },
-    { data: invites, error: invitesError },
+    { data: inviteRows, error: invitesError },
   ] =
     await Promise.all([
       supabase
@@ -60,9 +61,7 @@ export async function getDashboardData() {
         .eq("user_id", user.id),
       supabase
         .from("workspace_invites")
-        .select(
-          "id, invited_email, workspace_id, workspace:workspaces!inner(name, slug)",
-        )
+        .select("id, invited_email, workspace_id")
         .eq("invited_user_id", user.id)
         .eq("status", "pending"),
     ]);
@@ -78,18 +77,39 @@ export async function getDashboardData() {
 
   serverDebug("dashboard.load.success", {
     hasProfile: Boolean(profile),
-    inviteCount: invites?.length ?? 0,
+    inviteCount: inviteRows?.length ?? 0,
     userId: user.id,
     workspaceCount: memberships?.length ?? 0,
   });
 
+  const workspaceIds = [...new Set((inviteRows ?? []).map((invite) => invite.workspace_id))];
+  const admin = createAdminClient();
+  const { data: inviteWorkspaces, error: inviteWorkspacesError } =
+    workspaceIds.length > 0
+      ? await admin
+          .from("workspaces")
+          .select("id, name, slug")
+          .in("id", workspaceIds)
+      : { data: [], error: null };
+
+  if (inviteWorkspacesError) {
+    serverError("dashboard.load.invite_workspaces", inviteWorkspacesError, {
+      userId: user.id,
+      workspaceIds,
+    });
+  }
+
+  const workspaceById = new Map(
+    (inviteWorkspaces ?? []).map((workspace) => [workspace.id, workspace]),
+  );
+
   return {
-    invites: (invites ?? []).map((invite) => ({
+    invites: (inviteRows ?? []).map((invite) => ({
       id: invite.id,
       invitedEmail: invite.invited_email,
       workspaceId: invite.workspace_id,
-      workspaceName: asSingle(invite.workspace)?.name ?? "Workspace",
-      workspaceSlug: asSingle(invite.workspace)?.slug ?? "",
+      workspaceName: workspaceById.get(invite.workspace_id)?.name ?? "Workspace",
+      workspaceSlug: workspaceById.get(invite.workspace_id)?.slug ?? "",
     })) satisfies PendingInvite[],
     profile,
     user,
