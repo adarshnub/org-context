@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  Bot,
   MailPlus,
   MessageSquareText,
   Settings2,
@@ -14,6 +13,7 @@ import {
   updateWorkspaceToolsAction,
 } from "@/app/actions/workspace";
 import { SubmitButton } from "@/components/forms/submit-button";
+import { ProviderSettingsForm } from "@/components/workspace/provider-settings-form";
 import { getWorkspaceDetail } from "@/lib/data";
 import { getAllTools } from "@/lib/tools";
 
@@ -54,7 +54,10 @@ export default async function WorkspacePage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className="btn-primary" href={`/workspaces/${workspace.id}/chat`}>
+            <Link
+              className="btn-primary"
+              href={`/workspaces/${workspace.id}/chat`}
+            >
               <MessageSquareText size={16} />
               Open chat
             </Link>
@@ -171,7 +174,10 @@ export default async function WorkspacePage({
                       required
                       type="email"
                     />
-                    <SubmitButton className="btn-primary" pendingLabel="Inviting...">
+                    <SubmitButton
+                      className="btn-primary"
+                      pendingLabel="Inviting..."
+                    >
                       Send invite
                     </SubmitButton>
                   </form>
@@ -197,28 +203,10 @@ export default async function WorkspacePage({
                       </h2>
                     </div>
                   </div>
-                  <form
-                    action={updateWorkspaceProviderAction.bind(null, workspace.id)}
-                    className="mt-5 grid gap-3"
-                  >
-                    <label className="grid gap-2">
-                      <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink)]">
-                        <Bot size={16} />
-                        `/ask` model
-                      </span>
-                      <select
-                        className="field"
-                        defaultValue={workspace.answerProvider}
-                        name="provider"
-                      >
-                        <option value="cohere">Cohere</option>
-                        <option value="openai">OpenAI</option>
-                      </select>
-                    </label>
-                    <SubmitButton className="btn-secondary" pendingLabel="Saving...">
-                      Save provider
-                    </SubmitButton>
-                  </form>
+                  <ProviderSettingsForm
+                    initialProvider={workspace.answerProvider}
+                    workspaceId={workspace.id}
+                  />
                 </section>
 
                 <section className="animate-rise stagger-3 surface p-5">
@@ -242,7 +230,9 @@ export default async function WorkspacePage({
                       >
                         <input
                           className="mt-1 size-4 accent-[#0f766e]"
-                          defaultChecked={workspace.enabledTools.includes(tool.name)}
+                          defaultChecked={workspace.enabledTools.includes(
+                            tool.name,
+                          )}
                           name="enabledTools"
                           type="checkbox"
                           value={tool.name}
@@ -257,7 +247,10 @@ export default async function WorkspacePage({
                         </span>
                       </label>
                     ))}
-                    <SubmitButton className="btn-secondary" pendingLabel="Saving...">
+                    <SubmitButton
+                      className="btn-secondary"
+                      pendingLabel="Saving..."
+                    >
                       Save tools
                     </SubmitButton>
                   </form>

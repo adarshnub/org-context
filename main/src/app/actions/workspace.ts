@@ -118,9 +118,19 @@ export async function updateWorkspaceProviderAction(
   workspaceId: string,
   formData: FormData,
 ) {
-  const values = providerSchema.parse({
+  const parsedValues = providerSchema.safeParse({
     provider: formData.get("provider"),
   });
+
+  if (!parsedValues.success) {
+    redirect(
+      `/workspaces/${workspaceId}?providerError=${encodeURIComponent(
+        "Choose a valid provider option.",
+      )}`,
+    );
+  }
+
+  const values = parsedValues.data;
 
   const { user } = await requireUser();
   await requireOwner(workspaceId, user.id);
@@ -134,10 +144,72 @@ export async function updateWorkspaceProviderAction(
     .eq("id", workspaceId);
 
   if (error) {
-    throw new Error(error.message);
+    redirect(
+      `/workspaces/${workspaceId}?providerError=${encodeURIComponent(error.message)}`,
+    );
   }
 
   revalidatePath(`/workspaces/${workspaceId}`);
+  revalidatePath("/dashboard");
+  redirect(
+    `/workspaces/${workspaceId}?providerMessage=${encodeURIComponent(
+      `Saved provider: ${values.provider}.`,
+    )}`,
+  );
+}
+
+export async function updateWorkspaceProviderInlineAction(
+  workspaceId: string,
+  formData: FormData,
+) {
+  const parsedValues = providerSchema.safeParse({
+    provider: formData.get("provider"),
+  });
+
+  if (!parsedValues.success) {
+    return {
+      error: "Choose a valid provider option.",
+      ok: false as const,
+    };
+  }
+
+  const values = parsedValues.data;
+
+  try {
+    const { user } = await requireUser();
+    await requireOwner(workspaceId, user.id);
+
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("workspaces")
+      .update({
+        answer_provider: values.provider,
+      })
+      .eq("id", workspaceId);
+
+    if (error) {
+      return {
+        error: error.message,
+        ok: false as const,
+      };
+    }
+
+    revalidatePath(`/workspaces/${workspaceId}`);
+    revalidatePath("/dashboard");
+
+    return {
+      ok: true as const,
+      provider: values.provider,
+    };
+  } catch (caughtError) {
+    return {
+      error:
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not save provider.",
+      ok: false as const,
+    };
+  }
 }
 
 export async function updateWorkspaceToolsAction(
