@@ -16,6 +16,19 @@ export type RetrievedSnippet = {
   similarity: number;
 };
 
+export type RetrievedCodeSnippet = {
+  branch: string;
+  commitSha: string | null;
+  content: string;
+  endLine: number;
+  id: string;
+  path: string;
+  repoName: string;
+  repoUrl: string;
+  similarity: number;
+  startLine: number;
+};
+
 export type ToolResultForContext = {
   error?: string;
   input: unknown;
@@ -27,6 +40,7 @@ export type ToolResultForContext = {
 export type AnswerContext = {
   modelInput: string;
   ragSnippets: RetrievedSnippet[];
+  repositorySnippets: RetrievedCodeSnippet[];
   recentMessages: ContextMessage[];
   systemPrompt: string;
 };
@@ -59,6 +73,19 @@ function formatSnippet(snippet: RetrievedSnippet, index: number) {
   ].join("\n");
 }
 
+function formatCodeSnippet(snippet: RetrievedCodeSnippet, index: number) {
+  return [
+    `Code source ${index + 1}`,
+    `Repository: ${snippet.repoName}`,
+    `Branch: ${snippet.branch}`,
+    `Path: ${snippet.path}`,
+    `Lines: ${snippet.startLine}-${snippet.endLine}`,
+    `Commit: ${snippet.commitSha ?? "unknown"}`,
+    `Similarity: ${snippet.similarity.toFixed(4)}`,
+    `Code:\n${snippet.content}`,
+  ].join("\n");
+}
+
 function formatToolResult(result: ToolResultForContext, index: number) {
   return [
     `Tool result ${index + 1}`,
@@ -72,11 +99,13 @@ function formatToolResult(result: ToolResultForContext, index: number) {
 export function buildAnswerContext({
   question,
   recentMessages,
+  repositorySnippets = [],
   retrievedSnippets,
   toolResults = [],
 }: {
   question: string;
   recentMessages: ContextMessage[];
+  repositorySnippets?: RetrievedCodeSnippet[];
   retrievedSnippets: RetrievedSnippet[];
   toolResults?: ToolResultForContext[];
 }): AnswerContext {
@@ -86,6 +115,7 @@ export function buildAnswerContext({
   const dedupedSnippets = retrievedSnippets.filter((snippet) => !recentIds.has(snippet.id));
   const acceptedRecent: ContextMessage[] = [];
   const acceptedSnippets: RetrievedSnippet[] = [];
+  const acceptedCodeSnippets: RetrievedCodeSnippet[] = [];
   const acceptedTools: ToolResultForContext[] = [];
   let spent = estimateTokens(systemPrompt) + estimateTokens(question);
 
@@ -111,6 +141,19 @@ export function buildAnswerContext({
     acceptedSnippets.push(snippet);
   }
 
+  for (const snippet of repositorySnippets) {
+    const nextCost = estimateTokens(
+      formatCodeSnippet(snippet, acceptedCodeSnippets.length),
+    );
+
+    if (spent + nextCost > contextTokenBudget) {
+      break;
+    }
+
+    spent += nextCost;
+    acceptedCodeSnippets.push(snippet);
+  }
+
   for (const toolResult of toolResults) {
     const nextCost = estimateTokens(formatToolResult(toolResult, acceptedTools.length));
 
@@ -130,6 +173,10 @@ export function buildAnswerContext({
     acceptedSnippets.length > 0
       ? acceptedSnippets.map(formatSnippet).join("\n\n")
       : "No retrieved chat snippets were found.";
+  const codeContext =
+    acceptedCodeSnippets.length > 0
+      ? acceptedCodeSnippets.map(formatCodeSnippet).join("\n\n")
+      : "No indexed code snippets were found.";
   const toolContext =
     acceptedTools.length > 0
       ? acceptedTools.map(formatToolResult).join("\n\n")
@@ -138,13 +185,15 @@ export function buildAnswerContext({
   const modelInput = [
     `Question:\n${question}`,
     `Recent chat context:\n${recentContext}`,
-    `Retrieved workspace memory:\n${retrievedContext}`,
+    `Retrieved chat memory:\n${retrievedContext}`,
+    `Retrieved indexed code:\n${codeContext}`,
     `Tool results:\n${toolContext}`,
   ].join("\n\n");
 
   return {
     modelInput,
     ragSnippets: acceptedSnippets,
+    repositorySnippets: acceptedCodeSnippets,
     recentMessages: acceptedRecent,
     systemPrompt,
   };

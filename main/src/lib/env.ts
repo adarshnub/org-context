@@ -32,6 +32,22 @@ export function getServiceRoleKey() {
   return requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
 
+export function getGitHubTokenEncryptionKey() {
+  return requireEnv("GITHUB_TOKEN_ENCRYPTION_KEY");
+}
+
+export function getGitHubIndexConfig() {
+  const rawMaxFiles = process.env.REPO_INDEX_MAX_FILES ?? "0";
+  const rawMaxFileBytes = process.env.REPO_INDEX_MAX_FILE_BYTES ?? "200000";
+  const rawMaxChunks = process.env.REPO_INDEX_MAX_CHUNKS_PER_SYNC ?? "0";
+
+  return {
+    maxChunksPerSync: Number.parseInt(rawMaxChunks, 10),
+    maxFileBytes: Number.parseInt(rawMaxFileBytes, 10),
+    maxFiles: Number.parseInt(rawMaxFiles, 10),
+  };
+}
+
 export function getAppConfig() {
   const rawTopK = process.env.DEFAULT_ASK_TOP_K ?? "8";
   const topK = Number.parseInt(rawTopK, 10);

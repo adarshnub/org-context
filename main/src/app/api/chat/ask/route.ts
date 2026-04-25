@@ -9,7 +9,11 @@ import {
   planToolRequests,
 } from "@/lib/ai";
 import { extractAskQuery, isAskCommand } from "@/lib/chat";
-import { buildAnswerContext, type ContextMessage } from "@/lib/context";
+import {
+  buildAnswerContext,
+  type ContextMessage,
+  type RetrievedCodeSnippet,
+} from "@/lib/context";
 import { normalizeInsertedMessage } from "@/lib/data";
 import { getAppConfig } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -39,6 +43,21 @@ type RecentRow = {
   sender_id: string | null;
 };
 
+type CodeMatchRow = {
+  branch: string;
+  chunk_id: string;
+  commit_sha: string | null;
+  content: string;
+  content_preview: string;
+  end_line: number;
+  github_owner: string;
+  github_repo: string;
+  path: string;
+  repo_url: string;
+  similarity: number;
+  start_line: number;
+};
+
 type TokenBreakdown = {
   inputTokens: number | null;
   model: string;
@@ -55,6 +74,21 @@ function toRecentMessage(row: RecentRow): ContextMessage {
     messageType: row.message_type,
     senderName: row.sender?.full_name ?? (row.sender_id ? "Workspace member" : "Org Context"),
   };
+}
+
+function buildCodeCitations(snippets: RetrievedCodeSnippet[]) {
+  return snippets.slice(0, 3).map((snippet) => ({
+    branch: snippet.branch,
+    codeChunkId: snippet.id,
+    commitSha: snippet.commitSha ?? undefined,
+    endLine: snippet.endLine,
+    excerpt: snippet.content.slice(0, 180),
+    path: snippet.path,
+    repoName: snippet.repoName,
+    similarity: snippet.similarity,
+    sourceType: "code_chunk" as const,
+    startLine: snippet.startLine,
+  }));
 }
 
 export async function POST(request: Request) {
@@ -131,12 +165,21 @@ export async function POST(request: Request) {
     const enabledTools = normalizeEnabledTools(workspace?.enabled_tools);
     const queryEmbedding = await createEmbedding(question, "search_query");
     const { recentMessageCount } = getAppConfig();
-    const [{ data: matches, error: matchError }, { data: recentRows, error: recentError }] =
+    const [
+      { data: matches, error: matchError },
+      { data: codeMatches, error: codeMatchError },
+      { data: recentRows, error: recentError },
+    ] =
       await Promise.all([
         admin.rpc("match_chat_messages", {
           accepted_message_types: ["user"],
           channel_id_input: payload.channelId,
           exclude_message_id_input: commandRow.id,
+          match_count: getAskTopK(),
+          query_embedding: queryEmbedding,
+          workspace_id_input: payload.workspaceId,
+        }),
+        admin.rpc("match_repository_code_chunks", {
           match_count: getAskTopK(),
           query_embedding: queryEmbedding,
           workspace_id_input: payload.workspaceId,
@@ -158,6 +201,10 @@ export async function POST(request: Request) {
       throw new Error(matchError.message);
     }
 
+    if (codeMatchError) {
+      throw new Error(codeMatchError.message);
+    }
+
     if (recentError) {
       throw new Error(recentError.message);
     }
@@ -173,9 +220,24 @@ export async function POST(request: Request) {
     const recentMessages = ((recentRows ?? []) as RecentRow[])
       .map(toRecentMessage)
       .reverse();
+    const repositorySnippets = ((codeMatches ?? []) as CodeMatchRow[]).map(
+      (match) => ({
+        branch: match.branch,
+        commitSha: match.commit_sha,
+        content: match.content,
+        endLine: match.end_line,
+        id: match.chunk_id,
+        path: match.path,
+        repoName: `${match.github_owner}/${match.github_repo}`,
+        repoUrl: match.repo_url,
+        similarity: match.similarity,
+        startLine: match.start_line,
+      }),
+    );
     const initialContext = buildAnswerContext({
       question,
       recentMessages,
+      repositorySnippets,
       retrievedSnippets: topMatches,
     });
 
@@ -189,6 +251,7 @@ export async function POST(request: Request) {
         model_input: initialContext.modelInput,
         question,
         rag_snippets: initialContext.ragSnippets,
+        repository_snippets: initialContext.repositorySnippets,
         recent_messages: initialContext.recentMessages,
         status: "running",
         system_prompt: initialContext.systemPrompt,
@@ -240,6 +303,7 @@ export async function POST(request: Request) {
     const finalContext = buildAnswerContext({
       question,
       recentMessages,
+      repositorySnippets,
       retrievedSnippets: topMatches,
       toolResults: toolCalls,
     });
@@ -263,7 +327,10 @@ export async function POST(request: Request) {
         source: item.source === "provider" ? "provider" as const : "estimated" as const,
       })),
     ]);
-    const citations = buildCitations(finalContext.ragSnippets);
+    const citations = [
+      ...buildCitations(finalContext.ragSnippets),
+      ...buildCodeCitations(finalContext.repositorySnippets),
+    ];
     const { data: assistantRow, error: assistantError } = await admin
       .from("chat_messages")
       .insert({
@@ -293,6 +360,7 @@ export async function POST(request: Request) {
         model_input: finalContext.modelInput,
         output_tokens: usage.outputTokens,
         rag_snippets: finalContext.ragSnippets,
+        repository_snippets: finalContext.repositorySnippets,
         recent_messages: finalContext.recentMessages,
         status: "completed",
         system_prompt: finalContext.systemPrompt,

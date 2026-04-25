@@ -11,6 +11,7 @@ import type {
   TokenUsageData,
   WorkspaceDetail,
   WorkspaceMember,
+  WorkspaceRepository,
   WorkspaceSummary,
 } from "@/lib/types";
 import { normalizeEnabledTools } from "@/lib/tools";
@@ -27,6 +28,30 @@ type RawMessageRow = {
   sender_id: string | null;
   sender?: { full_name?: string | null } | null;
   workspace_id: string;
+};
+
+type RawRepositoryRow = {
+  branch: string;
+  encrypted_access_token: string | null;
+  github_owner: string;
+  github_repo: string;
+  id: string;
+  last_indexed_commit_sha: string | null;
+  last_synced_at: string | null;
+  repo_url: string;
+  sync_hourly: boolean;
+  sync_status: WorkspaceRepository["syncStatus"];
+};
+
+type RawRepositoryJobRow = {
+  completed_at: string | null;
+  error: string | null;
+  id: string;
+  processed_file_count: number | null;
+  repository_id: string;
+  skipped_file_count: number | null;
+  status: WorkspaceRepository["syncStatus"];
+  trigger_type: string;
 };
 
 function asSingle<T>(value: T | T[] | null | undefined) {
@@ -440,6 +465,7 @@ export async function getWorkspaceDetail(workspaceId: string) {
     { data: memberRows, error: membersError },
     { data: messageRows, error: messagesError },
     { data: profile, error: profileError },
+    { data: repositoryRows, error: repositoriesError },
   ] = await Promise.all([
     supabase
       .from("channels")
@@ -465,10 +491,22 @@ export async function getWorkspaceDetail(workspaceId: string) {
       .select("full_name, email")
       .eq("id", user.id)
       .single(),
+    supabase
+      .from("workspace_repositories")
+      .select(
+        "id, repo_url, github_owner, github_repo, branch, encrypted_access_token, sync_hourly, sync_status, last_indexed_commit_sha, last_synced_at",
+      )
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false }),
   ]);
 
   const loadError =
-    channelError ?? membersError ?? messagesError ?? profileError ?? null;
+    channelError ??
+    membersError ??
+    messagesError ??
+    profileError ??
+    repositoriesError ??
+    null;
 
   if (loadError) {
     serverError("workspace.load.data", loadError, {
@@ -476,6 +514,7 @@ export async function getWorkspaceDetail(workspaceId: string) {
       membersError,
       messagesError,
       profileError,
+      repositoriesError,
       userId: user.id,
       workspaceId,
     });
@@ -501,11 +540,111 @@ export async function getWorkspaceDetail(workspaceId: string) {
   const memberNameMap = new Map(members.map((member) => [member.userId, member.fullName]));
   const messages =
     (messageRows ?? []).map((row) => normalizeMessageRow(row as RawMessageRow, memberNameMap)) satisfies ChatMessage[];
+  const repositoryIds = (repositoryRows ?? []).map((row) => row.id);
+  const admin = createAdminClient();
+  const [
+    { data: latestJobRows, error: latestJobsError },
+    { data: fileCountRows, error: fileCountsError },
+    { data: chunkCountRows, error: chunkCountsError },
+  ] =
+    repositoryIds.length > 0
+      ? await Promise.all([
+          admin
+            .from("repository_sync_jobs")
+            .select(
+              "id, repository_id, status, trigger_type, processed_file_count, skipped_file_count, completed_at, error",
+            )
+            .in("repository_id", repositoryIds)
+            .order("created_at", { ascending: false }),
+          admin
+            .from("repository_files")
+            .select("repository_id")
+            .in("repository_id", repositoryIds)
+            .is("deleted_at", null),
+          admin
+            .from("repository_code_chunks")
+            .select("repository_id")
+            .in("repository_id", repositoryIds),
+        ])
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
+
+  if (latestJobsError || fileCountsError || chunkCountsError) {
+    serverError(
+      "workspace.load.repositories",
+      latestJobsError ?? fileCountsError ?? chunkCountsError,
+      {
+        chunkCountsError,
+        fileCountsError,
+        latestJobsError,
+        repositoryIds,
+        userId: user.id,
+        workspaceId,
+      },
+    );
+  }
+
+  const latestJobByRepository = new Map<string, RawRepositoryJobRow>();
+  for (const job of (latestJobRows ?? []) as RawRepositoryJobRow[]) {
+    if (!latestJobByRepository.has(job.repository_id)) {
+      latestJobByRepository.set(job.repository_id, job);
+    }
+  }
+
+  const fileCountByRepository = new Map<string, number>();
+  for (const row of (fileCountRows ?? []) as Array<{ repository_id: string }>) {
+    fileCountByRepository.set(
+      row.repository_id,
+      (fileCountByRepository.get(row.repository_id) ?? 0) + 1,
+    );
+  }
+
+  const chunkCountByRepository = new Map<string, number>();
+  for (const row of (chunkCountRows ?? []) as Array<{ repository_id: string }>) {
+    chunkCountByRepository.set(
+      row.repository_id,
+      (chunkCountByRepository.get(row.repository_id) ?? 0) + 1,
+    );
+  }
+
+  const repositories = ((repositoryRows ?? []) as RawRepositoryRow[]).map((row) => {
+    const lastSync = latestJobByRepository.get(row.id) ?? null;
+
+    return {
+      branch: row.branch,
+      chunkCount: chunkCountByRepository.get(row.id) ?? 0,
+      fileCount: fileCountByRepository.get(row.id) ?? 0,
+      githubOwner: row.github_owner,
+      githubRepo: row.github_repo,
+      hasToken: Boolean(row.encrypted_access_token),
+      id: row.id,
+      lastIndexedCommitSha: row.last_indexed_commit_sha,
+      lastSync: lastSync
+        ? {
+            completedAt: lastSync.completed_at,
+            error: lastSync.error,
+            id: lastSync.id,
+            processedFileCount: lastSync.processed_file_count ?? 0,
+            skippedFileCount: lastSync.skipped_file_count ?? 0,
+            status: lastSync.status,
+            triggerType: lastSync.trigger_type,
+          }
+        : null,
+      lastSyncedAt: row.last_synced_at,
+      repoUrl: row.repo_url,
+      syncHourly: row.sync_hourly,
+      syncStatus: row.sync_status,
+    } satisfies WorkspaceRepository;
+  });
 
   serverDebug("workspace.load.success", {
     channelId: channel.id,
     memberCount: members.length,
     messageCount: messages.length,
+    repositoryCount: repositories.length,
     userId: user.id,
     workspaceId,
   });
@@ -525,6 +664,7 @@ export async function getWorkspaceDetail(workspaceId: string) {
       members,
       messages,
       name: asSingle(membership.workspace)?.name ?? "Workspace",
+      repositories,
       role: membership.role,
       slug: asSingle(membership.workspace)?.slug ?? "",
     } satisfies WorkspaceDetail,
@@ -607,7 +747,7 @@ export async function getChatContextDebugData(workspaceId: string, runId?: strin
   const { data: runs, error } = await supabase
     .from("chat_context_runs")
     .select(
-      "id, workspace_id, channel_id, command_message_id, assistant_message_id, question, answer, answer_provider, model, system_prompt, model_input, rag_snippets, recent_messages, enabled_tools, tool_calls, token_breakdown, input_tokens, output_tokens, token_source, status, error, created_at",
+      "id, workspace_id, channel_id, command_message_id, assistant_message_id, question, answer, answer_provider, model, system_prompt, model_input, rag_snippets, repository_snippets, recent_messages, enabled_tools, tool_calls, token_breakdown, input_tokens, output_tokens, token_source, status, error, created_at",
     )
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
@@ -648,6 +788,7 @@ function normalizeContextRun(row: Record<string, unknown>) {
     modelInput: typeof row.model_input === "string" ? row.model_input : null,
     outputTokens: typeof row.output_tokens === "number" ? row.output_tokens : null,
     question: String(row.question ?? ""),
+    repositorySnippets: asArray(row.repository_snippets),
     ragSnippets: asArray(row.rag_snippets),
     recentMessages: asArray(row.recent_messages),
     status: row.status === "failed" || row.status === "running" ? row.status : "completed",

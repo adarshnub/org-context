@@ -161,6 +161,10 @@ export default async function ChatDebugPage({
                   <p className="eyebrow">Recent messages</p>
                   <JsonBlock value={selectedRun.recentMessages} />
                 </div>
+                <div className="surface p-5 xl:col-span-2">
+                  <p className="eyebrow">Repository snippets</p>
+                  <JsonBlock value={selectedRun.repositorySnippets} />
+                </div>
                 <div className="surface p-5">
                   <p className="eyebrow">Enabled tools</p>
                   <JsonBlock value={selectedRun.enabledTools} />

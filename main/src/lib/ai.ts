@@ -311,6 +311,7 @@ export function buildCitations(snippets: RetrievedSnippet[]): Citation[] {
     excerpt: snippet.body.slice(0, 180),
     messageId: snippet.id,
     similarity: snippet.similarity,
+    sourceType: "chat_message",
   }));
 }
 

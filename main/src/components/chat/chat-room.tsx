@@ -574,9 +574,16 @@ export function ChatRoom({
                     {message.citations.map((citation) => (
                       <span
                         className="rounded-md bg-white/80 px-2.5 py-1 text-xs font-bold text-slate-600"
-                        key={`${message.id}-${citation.messageId}`}
+                        key={`${message.id}-${
+                          citation.messageId ?? citation.codeChunkId
+                        }`}
                       >
-                        Source {citation.messageId.slice(0, 8)} /{" "}
+                        {citation.sourceType === "code_chunk"
+                          ? `${citation.repoName ?? "Code"}:${citation.path ?? ""}${
+                              citation.startLine ? `:${citation.startLine}` : ""
+                            }`
+                          : `Chat ${citation.messageId?.slice(0, 8) ?? "source"}`}{" "}
+                        /{" "}
                         {citation.similarity.toFixed(3)}
                       </span>
                     ))}

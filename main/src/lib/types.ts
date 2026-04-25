@@ -5,9 +5,17 @@ export type EmbeddingStatus = "pending" | "completed" | "failed";
 export type ToolName = "math.calculate" | "web.fetchPage";
 
 export type Citation = {
+  branch?: string;
+  codeChunkId?: string;
+  commitSha?: string;
   excerpt: string;
-  messageId: string;
+  endLine?: number;
+  messageId?: string;
+  path?: string;
+  repoName?: string;
   similarity: number;
+  sourceType?: "chat_message" | "code_chunk";
+  startLine?: number;
 };
 
 export type ChatMessage = {
@@ -58,8 +66,40 @@ export type WorkspaceDetail = {
   members: WorkspaceMember[];
   messages: ChatMessage[];
   name: string;
+  repositories: WorkspaceRepository[];
   role: WorkspaceRole;
   slug: string;
+};
+
+export type RepositorySyncStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "partial";
+
+export type WorkspaceRepository = {
+  branch: string;
+  chunkCount: number;
+  fileCount: number;
+  githubOwner: string;
+  githubRepo: string;
+  hasToken: boolean;
+  id: string;
+  lastIndexedCommitSha: string | null;
+  lastSync: {
+    completedAt: string | null;
+    error: string | null;
+    id: string;
+    processedFileCount: number;
+    skippedFileCount: number;
+    status: RepositorySyncStatus;
+    triggerType: string;
+  } | null;
+  lastSyncedAt: string | null;
+  repoUrl: string;
+  syncHourly: boolean;
+  syncStatus: RepositorySyncStatus;
 };
 
 export type ContextRunStatus = "running" | "completed" | "failed";
@@ -79,6 +119,7 @@ export type ChatContextRun = {
   modelInput: string | null;
   outputTokens: number | null;
   question: string;
+  repositorySnippets: unknown[];
   ragSnippets: unknown[];
   recentMessages: unknown[];
   status: ContextRunStatus;

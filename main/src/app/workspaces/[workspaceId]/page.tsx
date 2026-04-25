@@ -12,6 +12,7 @@ import {
   updateWorkspaceToolsAction,
 } from "@/app/actions/workspace";
 import { SubmitButton } from "@/components/forms/submit-button";
+import { GitHubRepositoriesPanel } from "@/components/workspace/github-repositories-panel";
 import { ProviderSettingsForm } from "@/components/workspace/provider-settings-form";
 import { getWorkspaceDetail } from "@/lib/data";
 import { getAllTools } from "@/lib/tools";
@@ -29,6 +30,9 @@ export default async function WorkspacePage({
     typeof query.inviteError === "string" ? query.inviteError : null;
   const inviteMessage =
     typeof query.inviteMessage === "string" ? query.inviteMessage : null;
+  const repoError = typeof query.repoError === "string" ? query.repoError : null;
+  const repoMessage =
+    typeof query.repoMessage === "string" ? query.repoMessage : null;
   const { workspace } = await getWorkspaceDetail(workspaceId);
   const availableTools = getAllTools();
 
@@ -67,55 +71,65 @@ export default async function WorkspacePage({
         </header>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <section className="animate-rise stagger-1 surface p-5">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
-                <MessageSquareText size={18} />
-              </span>
-              <div>
-                <p className="eyebrow">Group channel</p>
-                <h2 className="text-2xl font-semibold text-[var(--ink)]">
-                  {workspace.channelName}
-                </h2>
+          <div className="grid content-start gap-5">
+            <section className="animate-rise stagger-1 surface p-5">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
+                  <MessageSquareText size={18} />
+                </span>
+                <div>
+                  <p className="eyebrow">Group channel</p>
+                  <h2 className="text-2xl font-semibold text-[var(--ink)]">
+                    {workspace.channelName}
+                  </h2>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="surface-plain p-4">
-                <p className="eyebrow">Messages</p>
-                <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">
-                  {workspace.messages.length}
-                </p>
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <div className="surface-plain p-4">
+                  <p className="eyebrow">Messages</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">
+                    {workspace.messages.length}
+                  </p>
+                </div>
+                <div className="surface-plain p-4">
+                  <p className="eyebrow">Members</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">
+                    {workspace.members.length}
+                  </p>
+                </div>
+                <div className="surface-plain p-4">
+                  <p className="eyebrow">Provider</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">
+                    {workspace.answerProvider}
+                  </p>
+                </div>
               </div>
-              <div className="surface-plain p-4">
-                <p className="eyebrow">Members</p>
-                <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">
-                  {workspace.members.length}
-                </p>
-              </div>
-              <div className="surface-plain p-4">
-                <p className="eyebrow">Provider</p>
-                <p className="mt-2 text-3xl font-semibold text-[var(--ink)]">
-                  {workspace.answerProvider}
-                </p>
-              </div>
-            </div>
 
-            <div className="mt-6 border-t border-[var(--line)] pt-5">
-              <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">
-                Use the chat page when you want the realtime communication
-                surface. This overview stays reserved for workspace state,
-                membership, and owner settings.
-              </p>
-              <Link
-                className="btn-primary mt-5"
-                href={`/workspaces/${workspace.id}/chat`}
-              >
-                <MessageSquareText size={16} />
-                Go to group chat
-              </Link>
-            </div>
-          </section>
+              <div className="mt-6 border-t border-[var(--line)] pt-5">
+                <p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">
+                  Use the chat page when you want the realtime communication
+                  surface. This overview stays reserved for workspace state,
+                  membership, and owner settings.
+                </p>
+                <Link
+                  className="btn-primary mt-5"
+                  href={`/workspaces/${workspace.id}/chat`}
+                >
+                  <MessageSquareText size={16} />
+                  Go to group chat
+                </Link>
+              </div>
+            </section>
+
+            <GitHubRepositoriesPanel
+              canManage={workspace.role === "owner"}
+              repoError={repoError}
+              repoMessage={repoMessage}
+              repositories={workspace.repositories}
+              workspaceId={workspace.id}
+            />
+          </div>
 
           <aside className="grid content-start gap-5">
             <section className="animate-rise stagger-2 surface p-5">

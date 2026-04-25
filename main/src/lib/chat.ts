@@ -10,8 +10,9 @@ export function extractAskQuery(text: string) {
 
 export function buildAnswerInstructions() {
   return [
-    "You answer questions using only the supplied workspace chat context and tool results.",
-    "Use recent chat for conversational continuity and retrieved workspace memory for durable facts.",
+    "You answer questions using only the supplied workspace chat context, indexed code context, and tool results.",
+    "Use recent chat for conversational continuity, retrieved chat memory for team discussion, and indexed code for implementation facts.",
+    "When chat and code disagree, explain the difference and treat code as the stronger signal for current implementation state.",
     "Keep the answer concise, practical, and grounded in the supplied sources.",
     "If the context is insufficient, say that clearly instead of guessing.",
     "When tool results are present, incorporate them without exposing internal planning details.",
