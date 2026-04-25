@@ -1,14 +1,23 @@
 "use client";
 
-import { Bot, Radio, Send, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Bot, LoaderCircle, Radio, Send, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 import { formatTimestamp } from "@/lib/utils";
 import type { ChatMessage, WorkspaceMember } from "@/lib/types";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 type PendingMessage = ChatMessage & {
   pending?: boolean;
+};
+
+type TypingPayload = {
+  channelId: string;
+  isTyping: boolean;
+  userId: string;
+  userName: string;
+  workspaceId: string;
 };
 
 export function ChatRoom({
@@ -31,7 +40,14 @@ export function ChatRoom({
   const [error, setError] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState("connecting");
   const [submitting, setSubmitting] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Record<string, TypingPayload>>({});
   const supabase = useMemo(() => createClient(), []);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const messageFeedRef = useRef<HTMLDivElement | null>(null);
+  const initialScrollDoneRef = useRef(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingClearTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const realtimeChannelName = `workspace-${workspaceId}-${channelId}`;
 
   const memberNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -41,6 +57,10 @@ export function ChatRoom({
     map.set(currentUserId, currentUserName);
     return map;
   }, [currentUserId, currentUserName, members]);
+
+  const latestMessageKey = messages.length
+    ? `${messages[messages.length - 1]?.id}:${messages.length}`
+    : "empty";
 
   const normalizeRealtimeRow = useMemo(() => {
     return (row: Record<string, unknown>): PendingMessage | null => {
@@ -81,13 +101,39 @@ export function ChatRoom({
   }, [channelId, memberNameMap, workspaceId]);
 
   useEffect(() => {
+    const feed = messageFeedRef.current;
+
+    if (!feed || messages.length === 0) {
+      return;
+    }
+
+    const behavior = initialScrollDoneRef.current ? "smooth" : "auto";
+
+    const frame = window.requestAnimationFrame(() => {
+      feed.scrollTo({
+        behavior,
+        top: feed.scrollHeight,
+      });
+      initialScrollDoneRef.current = true;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestMessageKey, messages.length]);
+
+  useEffect(() => {
     console.log("[org-context:chat.realtime.subscribe]", {
       channelId,
       workspaceId,
     });
 
     const channel = supabase
-      .channel(`workspace-${workspaceId}-${channelId}`)
+      .channel(realtimeChannelName, {
+        config: {
+          broadcast: {
+            self: false,
+          },
+        },
+      })
       .on(
         "postgres_changes",
         {
@@ -144,6 +190,45 @@ export function ChatRoom({
           );
         },
       )
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        const typing = payload as TypingPayload;
+
+        if (
+          typing.userId === currentUserId ||
+          typing.workspaceId !== workspaceId ||
+          typing.channelId !== channelId
+        ) {
+          return;
+        }
+
+        console.log("[org-context:chat.typing.received]", typing);
+
+        setTypingUsers((current) => {
+          const next = { ...current };
+
+          if (typing.isTyping) {
+            next[typing.userId] = typing;
+          } else {
+            delete next[typing.userId];
+          }
+
+          return next;
+        });
+
+        if (typingClearTimersRef.current[typing.userId]) {
+          clearTimeout(typingClearTimersRef.current[typing.userId]);
+        }
+
+        if (typing.isTyping) {
+          typingClearTimersRef.current[typing.userId] = setTimeout(() => {
+            setTypingUsers((current) => {
+              const next = { ...current };
+              delete next[typing.userId];
+              return next;
+            });
+          }, 2500);
+        }
+      })
       .subscribe((status, error) => {
         console.log("[org-context:chat.realtime.status]", {
           error,
@@ -157,27 +242,74 @@ export function ChatRoom({
         if (error) {
           setError(`Realtime subscription failed: ${error.message}`);
         }
-      });
+    });
+
+    channelRef.current = channel;
+    const typingClearTimers = typingClearTimersRef.current;
 
     return () => {
       console.log("[org-context:chat.realtime.unsubscribe]", {
         channelId,
         workspaceId,
       });
+      channelRef.current = null;
       void supabase.removeChannel(channel);
+      Object.values(typingClearTimers).forEach(clearTimeout);
     };
-  }, [channelId, normalizeRealtimeRow, supabase, workspaceId]);
+  }, [
+    channelId,
+    currentUserId,
+    normalizeRealtimeRow,
+    realtimeChannelName,
+    supabase,
+    workspaceId,
+  ]);
+
+  async function broadcastTyping(isTyping: boolean) {
+    const channel = channelRef.current;
+
+    if (!channel) {
+      return;
+    }
+
+    await channel.send({
+      event: "typing",
+      payload: {
+        channelId,
+        isTyping,
+        userId: currentUserId,
+        userName: currentUserName,
+        workspaceId,
+      } satisfies TypingPayload,
+      type: "broadcast",
+    });
+  }
+
+  function handleInputChange(value: string) {
+    setInput(value);
+
+    void broadcastTyping(value.trim().length > 0);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      void broadcastTyping(false);
+    }, 1200);
+  }
 
   async function sendMessage() {
     const text = input.trim();
 
-    if (!text) {
+    if (!text || submitting) {
       return;
     }
 
     setSubmitting(true);
     setError(null);
     setInput("");
+    void broadcastTyping(false);
 
     const tempId = `temp-${crypto.randomUUID()}`;
     const isAsk = text.startsWith("/ask ");
@@ -269,11 +401,15 @@ export function ChatRoom({
   }
 
   return (
-    <div className="grid gap-4">
-      <section className="surface overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/70 px-5 py-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <section
+        aria-busy={submitting}
+        className="surface relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        {submitting ? <div className="chat-progress-bar" /> : null}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-white/70 px-5 py-3">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-[#13201d] text-white">
+            <span className="grid size-9 place-items-center rounded-lg bg-[#13201d] text-white">
               <Radio size={18} />
             </span>
             <div>
@@ -288,9 +424,12 @@ export function ChatRoom({
           </span>
         </div>
 
-        <div className="grid max-h-[34rem] min-h-[24rem] gap-3 overflow-y-auto p-5">
+        <div
+          className="scrollbar-hidden flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5"
+          ref={messageFeedRef}
+        >
           {messages.length === 0 ? (
-            <div className="grid place-items-center rounded-lg border border-dashed border-[var(--line)] bg-white/45 p-8 text-center">
+            <div className="grid min-h-56 place-items-center rounded-lg border border-dashed border-[var(--line)] bg-white/45 p-8 text-center">
               <div>
                 <Sparkles className="mx-auto text-[var(--teal)]" size={28} />
                 <p className="mt-3 text-sm font-bold text-[var(--ink)]">
@@ -317,8 +456,8 @@ export function ChatRoom({
 
             return (
               <article
-                className={`animate-rise max-w-[min(46rem,92%)] rounded-lg border p-4 ${bubble} ${
-                  message.pending ? "opacity-70" : ""
+                className={`animate-rise max-w-[min(46rem,92%)] self-start rounded-lg border p-4 ${bubble} ${
+                  message.pending ? "animate-pulse opacity-80" : ""
                 }`}
                 key={message.id}
               >
@@ -328,7 +467,14 @@ export function ChatRoom({
                     {message.senderName}
                   </span>
                   <span className={mine && !assistant ? "text-white/70" : "text-slate-500"}>
-                    {message.pending ? "Sending..." : formatTimestamp(message.createdAt)}
+                    {message.pending ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <LoaderCircle className="animate-spin" size={12} />
+                        Sending...
+                      </span>
+                    ) : (
+                      formatTimestamp(message.createdAt)
+                    )}
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm leading-7">{message.body}</p>
@@ -351,17 +497,39 @@ export function ChatRoom({
         </div>
       </section>
 
-      <section className="surface p-4">
-        <label className="grid gap-3" htmlFor="chat-input">
+      <section className="surface shrink-0 p-3">
+        <label className="grid gap-2" htmlFor="chat-input">
           <span className="eyebrow">Message</span>
           <textarea
-            className="field min-h-24 resize-y"
+            className="field min-h-16 resize-none disabled:opacity-70"
+            disabled={submitting}
             id="chat-input"
-            onChange={(event) => setInput(event.target.value)}
+            onBlur={() => void broadcastTyping(false)}
+            onChange={(event) => handleInputChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void sendMessage();
+              }
+            }}
             placeholder="Share an update or use /ask What did we decide about launch?"
+            rows={2}
             value={input}
           />
         </label>
+        {Object.values(typingUsers).length > 0 ? (
+          <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-[var(--teal)]">
+            <span className="flex gap-1">
+              <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_infinite]" />
+              <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_120ms_infinite]" />
+              <span className="size-1.5 rounded-full bg-[var(--teal)] [animation:pulse-soft_1s_ease-in-out_240ms_infinite]" />
+            </span>
+            {Object.values(typingUsers)
+              .map((user) => user.userName)
+              .join(", ")}{" "}
+            {Object.values(typingUsers).length === 1 ? "is" : "are"} typing
+          </div>
+        ) : null}
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {error ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -374,12 +542,21 @@ export function ChatRoom({
           )}
           <button
             className="btn-primary"
-            disabled={submitting}
+            disabled={submitting || input.trim().length === 0}
             onClick={() => void sendMessage()}
             type="button"
           >
-            {submitting ? "Sending..." : "Send"}
-            <Send size={16} />
+            {submitting ? (
+              <>
+                Sending
+                <LoaderCircle className="animate-spin" size={16} />
+              </>
+            ) : (
+              <>
+                Send
+                <Send size={16} />
+              </>
+            )}
           </button>
         </div>
       </section>
