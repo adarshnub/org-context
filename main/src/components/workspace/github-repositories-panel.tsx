@@ -88,7 +88,7 @@ export function GitHubRepositoriesPanel({
         {repositories.length === 0 ? (
           <div className="surface-plain p-4 text-sm leading-6 text-[var(--muted)]">
             No repositories connected yet. Connect a GitHub repo to let `/ask`
-            use code evidence alongside chat memory.
+            use repository evidence alongside chat memory.
           </div>
         ) : null}
 

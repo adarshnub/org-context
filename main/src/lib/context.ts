@@ -55,7 +55,7 @@ function stringifyJson(value: unknown) {
 
 function formatRecentMessage(message: ContextMessage, index: number) {
   return [
-    `Recent message ${index + 1}`,
+    `Recent chat source ${index + 1}`,
     `Sender: ${message.senderName}`,
     `Created: ${message.createdAt}`,
     `Type: ${message.messageType}`,
@@ -65,9 +65,10 @@ function formatRecentMessage(message: ContextMessage, index: number) {
 
 function formatSnippet(snippet: RetrievedSnippet, index: number) {
   return [
-    `Source ${index + 1}`,
+    `Retrieved chat source ${index + 1}`,
     `Sender: ${snippet.senderName}`,
     `Created: ${snippet.createdAt}`,
+    `Type: ${snippet.messageType ?? "unknown"}`,
     `Similarity: ${snippet.similarity.toFixed(4)}`,
     `Message: ${snippet.body}`,
   ].join("\n");
@@ -176,7 +177,7 @@ export function buildAnswerContext({
   const codeContext =
     acceptedCodeSnippets.length > 0
       ? acceptedCodeSnippets.map(formatCodeSnippet).join("\n\n")
-      : "No indexed code snippets were found.";
+      : "No repository/project code snippets were found.";
   const toolContext =
     acceptedTools.length > 0
       ? acceptedTools.map(formatToolResult).join("\n\n")
@@ -184,9 +185,17 @@ export function buildAnswerContext({
 
   const modelInput = [
     `Question:\n${question}`,
+    [
+      "Answer synthesis requirements:",
+      "- Use repository/project code sources for the current implementation verdict.",
+      "- Use chat sources for teammate claims, discussion, and project status context.",
+      "- When discussing code findings, name the repository/project shown in the code source metadata.",
+      "- If repository/project evidence and chat evidence conflict, explicitly mention both rather than dropping either one.",
+      "- For implementation/status questions, answer in this order: repository-backed finding, chat/history note, practical next step if useful.",
+    ].join("\n"),
     `Recent chat context:\n${recentContext}`,
     `Retrieved chat memory:\n${retrievedContext}`,
-    `Retrieved indexed code:\n${codeContext}`,
+    `Retrieved repository/project code:\n${codeContext}`,
     `Tool results:\n${toolContext}`,
   ].join("\n\n");
 
